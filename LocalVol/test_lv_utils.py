@@ -9,8 +9,8 @@ import numpy as np
 from scipy.stats import norm
 import logging
 import LocalVol.lv_utils
+from Utils.other_utils import customFunc
 from Utils.vanilla_utils import (
-    customFunc,
     undiscBachelierFwd,
     BSOpt,
     CEVSpot,

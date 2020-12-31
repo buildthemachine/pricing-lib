@@ -5,14 +5,16 @@ Date:       11/17/2020
 """
 
 from abc import ABCMeta, abstractmethod
-from Utils.vanilla_utils import vanilla_vol_base, customFunc
+from Utils.vanilla_utils import single_asset_vol_base
+from Utils.other_utils import customFunc
 from .lv_utils import Mesh
-from LocalVol.lv_utils import dictGetAttr
+from LocalVol.lv_utils import cevMixin, gbmMixin
+from Utils.other_utils import dictGetAttr
 import numpy as np
 
 
-class vanilla_localvol_base(vanilla_vol_base):
-    """This is the local volatility base class"""
+class vanilla_localvol_base(single_asset_vol_base):
+    """This is the local volatility base class for vanilla options"""
 
     def __init__(self, isCall, x0, strike, tau, **kwargs):
         super().__init__(isCall, x0, strike, tau)
@@ -21,6 +23,54 @@ class vanilla_localvol_base(vanilla_vol_base):
         }  # Convert all keys to upper case.
         self.other_params = kwargs
         self.isLog = dictGetAttr(self.other_params, "isLog", False)
+        self.ir = dictGetAttr(self.other_params, "ir", None)
+        self.dividend_yield = dictGetAttr(self.other_params, "dividend_yield", None)
+        if not self.isLog:
+            if self.isCall:
+                self.f_up = customFunc(
+                    "Exp Diff",
+                    isCall=self.isCall,
+                    k=self.strike,
+                    r=self.ir,
+                    q=self.dividend_yield,
+                    T=self.tau,
+                )
+                self.f_dn = customFunc("constant", a=0)
+                self.g = customFunc("RELU", a=-self.strike, b=1)
+            else:
+                self.f_up = customFunc("constant", a=0)
+                self.f_dn = customFunc(
+                    "Exp Diff",
+                    isCall=self.isCall,
+                    k=self.strike,
+                    r=self.ir,
+                    q=self.dividend_yield,
+                    T=self.tau,
+                )
+                self.g = customFunc("RELU", a=self.strike, b=-1)
+        else:
+            if self.isCall:
+                self.f_up = customFunc(
+                    "Exp Diff 2",
+                    isCall=self.isCall,
+                    k=np.log(self.strike),
+                    r=self.ir,
+                    q=self.dividend_yield,
+                    T=self.tau,
+                )
+                self.f_dn = customFunc("constant", a=0)
+                self.g = customFunc("Exp RELU", a=1, b=1, c=-self.strike)
+            else:
+                self.f_up = customFunc("constant", a=0)
+                self.f_dn = customFunc(
+                    "Exp Diff 2",
+                    isCall=self.isCall,
+                    k=np.log(self.strike),
+                    r=self.ir,
+                    q=self.dividend_yield,
+                    T=self.tau,
+                )
+                self.g = customFunc("Exp RELU", a=-1, b=1, c=self.strike)
 
     def price(self):
         if not self.isLog:
@@ -29,10 +79,11 @@ class vanilla_localvol_base(vanilla_vol_base):
             return self.mesh(np.log(self.x0))
 
 
-class vanilla_localvol_BS(vanilla_localvol_base):
-    """Local vol price for Black-Scholes"""
+class vanilla_localvol_GBM(gbmMixin, vanilla_localvol_base):
+    """Local vol price for Black-Scholes
+    Mixin class must come as the first parameter"""
 
-    def __init__(self, isCall, x0, strike, tau, ir, dividend_yield, **kwargs):
+    def __init__(self, isCall, x0, strike, tau, **kwargs):
         """Recommended additional parameters to be supplied:
         theta    :   theta=1/2: Crank-Nicolson; theta=1: fully implicit; theta=0: fully explicit
         M_high   :   upper bound in underlying prices
@@ -40,133 +91,111 @@ class vanilla_localvol_BS(vanilla_localvol_base):
         m, n     :   discretization in underlying/time domain
         """
         super().__init__(isCall, x0, strike, tau, **kwargs)
-        self.ir = ir
-        self.dividend_yield = dividend_yield
-        self.bsvol = dictGetAttr(self.other_params, "vol", None)
+
+
+class vanilla_localvol_CEV(cevMixin, vanilla_localvol_base):
+    """Local vol price for CEV
+    Mixin class must come as the first parameter"""
+
+    def __init__(self, isCall, x0, strike, tau, **kwargs):
+        """Recommended additional parameters to be supplied:
+        theta    :   theta=1/2: Crank-Nicolson; theta=1: fully implicit; theta=0: fully explicit
+        M_high   :   upper bound in underlying prices
+        M_low    :   lower bound in underlying prices
+        m, n     :   discretization in underlying/time domain
+        """
+        super().__init__(isCall, x0, strike, tau, **kwargs)
+
+
+class digital_localvol_base(single_asset_vol_base):
+    """This is the local volatility base class for digital options"""
+
+    def __init__(self, isCall, isCashOrNothing, x0, strike, tau, **kwargs):
+        super().__init__(isCall, x0, strike, tau)
+        kwargs = {
+            k.upper(): v for k, v in kwargs.items()
+        }  # Convert all keys to upper case.
+        self.isCashOrNothing = isCashOrNothing
+        self.other_params = kwargs
+        self.isLog = dictGetAttr(self.other_params, "isLog", False)
+        self.ir = dictGetAttr(self.other_params, "ir", None)
+        self.dividend_yield = dictGetAttr(self.other_params, "dividend_yield", None)
         if not self.isLog:
-            r = customFunc("constant", a=self.ir)
-            mu = customFunc("linear", a=0, b=self.ir - self.dividend_yield)
-            # b is BS volatility
-            sigma = customFunc("linear", a=0, b=self.bsvol)
-            if self.isCall:
-                f_up = customFunc(
-                    "Exp Diff",
-                    isCall=self.isCall,
-                    k=self.strike,
-                    r=self.ir,
-                    q=self.dividend_yield,
-                    T=self.tau,
-                )
-                f_dn = customFunc("constant", a=0)
-                g = customFunc("RELU", a=-self.strike, b=1)
+            if self.isCashOrNothing:
+                if self.isCall:
+                    # f_up = customFunc("constant", a=1)  # np.exp(-self.ir * self.tau))
+                    self.f_up = customFunc(
+                        "EXP TIME", a=1, b=-self.ir * self.tau, c=self.ir
+                    )
+                    self.f_dn = customFunc("constant", a=0)
+                    self.g = customFunc("Step", values=[0, 1], intervals=[self.strike])
+                else:
+                    self.f_up = customFunc("constant", a=0)
+                    # f_dn = customFunc("constant", a=1)  # np.exp(-self.ir * self.tau))
+                    self.f_dn = customFunc(
+                        "EXP TIME", a=1, b=-self.ir * self.tau, c=self.ir
+                    )
+                    self.g = customFunc("Step", values=[1, 0], intervals=[self.strike])
             else:
-                f_up = customFunc("constant", a=0)
-                f_dn = customFunc(
-                    "Exp Diff",
-                    isCall=self.isCall,
-                    k=self.strike,
-                    r=self.ir,
-                    q=self.dividend_yield,
-                    T=self.tau,
-                )
-                g = customFunc("RELU", a=self.strike, b=-1)
+                if self.isCall:
+                    self.f_up = customFunc("linear", a=0, b=1)
+                    self.f_dn = customFunc("constant", a=0)
+                    left_functor = customFunc("constant", a=0)
+                    right_functor = customFunc("linear", a=0, b=1)
+                    self.g = customFunc(
+                        "BI-PIECEWISE",
+                        middle_point=self.strike,
+                        left_functor=left_functor,
+                        right_functor=right_functor,
+                        side="Right",
+                    )
+                else:
+                    self.f_up = customFunc("constant", a=0)
+                    self.f_dn = customFunc("linear", a=0, b=1)
+                    left_functor = customFunc("linear", a=0, b=1)
+                    right_functor = customFunc("constant", a=0)
+                    self.g = customFunc(
+                        "BI-PIECEWISE",
+                        middle_point=self.strike,
+                        left_functor=left_functor,
+                        right_functor=right_functor,
+                        side="Right",
+                    )
         else:
-            r = customFunc("constant", a=self.ir)
-            mu = customFunc(
-                "constant", a=self.ir - self.dividend_yield - 0.5 * self.bsvol ** 2
+            raise NotImplementedError(
+                "Log dynamics have not been implemented for the CEV model"
             )
-            sigma = customFunc("constant", a=self.bsvol)
-            if self.isCall:
-                f_up = customFunc(
-                    "Exp Diff 2",
-                    isCall=self.isCall,
-                    k=np.log(self.strike),
-                    r=self.ir,
-                    q=self.dividend_yield,
-                    T=self.tau,
-                )
-                f_dn = customFunc("constant", a=0)
-                g = customFunc("Exp RELU", a=1, b=1, c=-self.strike)
-            else:
-                f_up = customFunc("constant", a=0)
-                f_dn = customFunc(
-                    "Exp Diff 2",
-                    isCall=self.isCall,
-                    k=np.log(self.strike),
-                    r=self.ir,
-                    q=self.dividend_yield,
-                    T=self.tau,
-                )
-                g = customFunc("Exp RELU", a=-1, b=1, c=self.strike)
 
-        self.mesh = Mesh(
-            self.tau,
-            self.x0,
-            r=r,
-            mu=mu,
-            sigma=sigma,
-            f_up=f_up,
-            f_dn=f_dn,
-            g=g,
-            **self.other_params
-        )
+    def price(self):
+        if not self.isLog:
+            return self.mesh(self.x0)
+        else:
+            return self.mesh(np.log(self.x0))
 
 
-class vanilla_localvol_CEV(vanilla_localvol_base):
-    """Local vol price for CEV"""
+class digital_localvol_GBM(gbmMixin, digital_localvol_base):
+    """Local vol price for Geometric Brownian motion
+    Mixin class must come as the first parameter"""
 
-    def __init__(self, isCall, x0, strike, tau, ir, dividend_yield, **kwargs):
+    def __init__(self, isCall, isCashOrNothing, x0, strike, tau, **kwargs):
         """Recommended additional parameters to be supplied:
         theta    :   theta=1/2: Crank-Nicolson; theta=1: fully implicit; theta=0: fully explicit
         M_high   :   upper bound in underlying prices
         M_low    :   lower bound in underlying prices
         m, n     :   discretization in underlying/time domain
         """
-        super().__init__(isCall, x0, strike, tau, **kwargs)
-        self.ir = ir
-        self.dividend_yield = dividend_yield
-        self.cev_lamda = dictGetAttr(self.other_params, "lamda", None)
-        self.cev_p = dictGetAttr(self.other_params, "p", None)
-        if self.isLog:
-            # TODO: implement CEV for log price
-            raise NotImplementedError(
-                "log version of CEV pricer has yet to be impleted!"
-            )
+        super().__init__(isCall, isCashOrNothing, x0, strike, tau, **kwargs)
 
-        r = customFunc("constant", a=self.ir)
-        mu = customFunc("linear", a=0, b=self.ir - self.dividend_yield)
-        sigma = customFunc("cev", lamda=self.cev_lamda, p=self.cev_p)
-        if self.isCall:
-            f_up = customFunc(
-                "Exp Diff",
-                isCall=self.isCall,
-                k=self.strike,
-                r=self.ir,
-                q=self.dividend_yield,
-                T=self.tau,
-            )
-            f_dn = customFunc("constant", a=0)
-            g = customFunc("RELU", a=-self.strike, b=1)
-        else:
-            f_up = customFunc("constant", a=0)
-            f_dn = customFunc(
-                "Exp Diff",
-                isCall=self.isCall,
-                k=self.strike,
-                r=self.ir,
-                q=self.dividend_yield,
-                T=self.tau,
-            )
-            g = customFunc("RELU", a=self.strike, b=-1)
 
-        self.mesh = Mesh(
-            self.tau,
-            self.x0,
-            r=r,
-            mu=mu,
-            sigma=sigma,
-            f_up=f_up,
-            f_dn=f_dn,
-            g=g,
-            **self.other_params
-        )
+class digital_localvol_CEV(cevMixin, digital_localvol_base):
+    """Local vol price for Geometric Brownian motion
+    Mixin class must come as the first parameter"""
+
+    def __init__(self, isCall, isCashOrNothing, x0, strike, tau, **kwargs):
+        """Recommended additional parameters to be supplied:
+        theta    :   theta=1/2: Crank-Nicolson; theta=1: fully implicit; theta=0: fully explicit
+        M_high   :   upper bound in underlying prices
+        M_low    :   lower bound in underlying prices
+        m, n     :   discretization in underlying/time domain
+        """
+        super().__init__(isCall, isCashOrNothing, x0, strike, tau, **kwargs)

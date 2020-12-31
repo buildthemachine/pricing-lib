@@ -12,14 +12,14 @@ import scipy.interpolate
 import scipy.sparse
 from scipy.stats import norm, ncx2
 from abc import ABCMeta, abstractmethod
-from LocalVol.lv_utils import dictGetAttr
+from Utils.other_utils import dictGetAttr
 import logging
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
-class vanilla_vol_base(metaclass=ABCMeta):
+class single_asset_vol_base(metaclass=ABCMeta):
     """Base volatility class for vanilla products
     Supports two functions: price and impliedVol"""
 
@@ -51,7 +51,7 @@ class vanilla_vol_base(metaclass=ABCMeta):
         )
 
 
-class Bachlier_obj(vanilla_vol_base):
+class Bachlier_obj(single_asset_vol_base):
     """Pricing object for Bachelier model"""
 
     def __init__(self, isCall, spot, strike, tau, **kwargs):
@@ -66,7 +66,7 @@ class Bachlier_obj(vanilla_vol_base):
         )
 
 
-class CEV_obj(vanilla_vol_base):
+class CEV_obj(single_asset_vol_base):
     """Pricing object for CEV model"""
 
     def __init__(self, isCall, spot, strike, tau, **kwargs):
@@ -89,7 +89,7 @@ class CEV_obj(vanilla_vol_base):
         )
 
 
-class BS_obj(vanilla_vol_base):
+class GBM_obj(single_asset_vol_base):
     """Pricing object for Black-Scholes equation"""
 
     def __init__(self, isCall, spot, strike, tau, **kwargs):
@@ -110,7 +110,106 @@ class BS_obj(vanilla_vol_base):
         )
 
 
-class sabr_black_vol(vanilla_vol_base):
+class GBM_digital_obj(single_asset_vol_base):
+    """Pricing object for European digital options via Black-Scholes"""
+
+    def __init__(self, isCall, isCashOrNothing, spot, strike, tau, **kwargs):
+        super().__init__(isCall, spot, strike, tau, **kwargs)
+        self.isCashOrNothing = isCashOrNothing
+        self.vol = dictGetAttr(self.other_params, "vol", None)
+        self.ir = dictGetAttr(self.other_params, "ir", None)
+        self.dividend_yield = dictGetAttr(self.other_params, "dividend_yield", None)
+
+    def price(self):
+        return BS_digital_Opt(
+            self.isCall,
+            self.isCashOrNothing,
+            self.x0,
+            self.strike,
+            self.vol,
+            self.tau,
+            self.ir,
+            self.dividend_yield,
+        )
+
+
+class CEV_digital_obj(single_asset_vol_base):
+    """Pricing object for European digital options with CEV dynamics"""
+
+    def __init__(self, isCall, isCashOrNothing, spot, strike, tau, **kwargs):
+        super().__init__(isCall, spot, strike, tau, **kwargs)
+        self.isCashOrNothing = isCashOrNothing
+        self.cev_p = dictGetAttr(self.other_params, "p", None)
+        self.cev_lamda = dictGetAttr(self.other_params, "lamda", None)
+        self.ir = dictGetAttr(self.other_params, "ir", None)
+        self.dividend_yield = dictGetAttr(self.other_params, "dividend_yield", None)
+
+    def impliedVol(self):
+        euro_price = CEVSpot(
+            self.isCall,
+            self.x0,
+            self.strike,
+            self.tau,
+            self.cev_lamda,
+            self.cev_p,
+            self.ir,
+            self.dividend_yield,
+        )
+        self.bsvol = BSImpVol(
+            self.isCall,
+            self.x0,
+            self.strike,
+            self.tau,
+            euro_price,
+            self.ir,
+            self.dividend_yield,
+        )
+        return self.bsvol
+
+    def price(self):
+        return BS_digital_Opt(
+            self.isCall,
+            self.isCashOrNothing,
+            self.x0,
+            self.strike,
+            self.impliedVol(),
+            self.tau,
+            self.ir,
+            self.dividend_yield,
+        )
+
+
+class SABR_digital_obj(single_asset_vol_base):
+    """Pricing object for European digital options with SABR
+    We first obtain the Black volatility from sabr dynamics, then plug that
+    volatility into digital option pricing formula"""
+
+    def __init__(self, isCall, isCashOrNothing, spot, strike, tau, **kwargs):
+        super().__init__(isCall, spot, strike, tau, **kwargs)
+        self.isCashOrNothing = isCashOrNothing
+        self.sabr_params = dictGetAttr(self.other_params, "SABR_params", None)
+
+    def impliedVol(self):
+        sabr_obj = sabr_black_vol(
+            self.isCall, self.x0, self.strike, self.tau, self.sabr_params
+        )
+        self.black_vol = sabr_black_vol.impliedVol()
+        return self.black_vol
+
+    def price(self):
+        return BS_digital_Opt(
+            self.isCall,
+            self.isCashOrNothing,
+            self.x0,
+            self.strike,
+            self.impliedVol(),
+            self.tau,
+            self.ir,
+            self.dividend_yield,
+        )
+
+
+class sabr_black_vol(single_asset_vol_base):
     """TODO: Writing unit test files for sabr
     SABR model does not depend on interest rate, therefore set r=q=0"""
 
@@ -203,6 +302,23 @@ def BSOpt(isCall, spot, strike, vol, tau, r, q):
         return strike * np.exp(-r * tau) * norm.cdf(
             -d2(spot, strike, vol, tau, r, q)
         ) - spot * np.exp(-q * tau) * norm.cdf(-d1(spot, strike, vol, tau, r, q))
+
+
+def BS_digital_Opt(isCall, isCashOrNothing, spot, strike, vol, tau, r, q):
+    """
+    r: risk free interest rate
+    q: convenience yield (-) or dividend payment (+)
+    """
+    if isCashOrNothing:
+        if isCall:
+            return np.exp(-r * tau) * norm.cdf(d2(spot, strike, vol, tau, r, q))
+        else:
+            return np.exp(-r * tau) * norm.cdf(-d2(spot, strike, vol, tau, r, q))
+    else:
+        if isCall:
+            return spot * np.exp(-q * tau) * norm.cdf(d1(spot, strike, vol, tau, r, q))
+        else:
+            return spot * np.exp(-q * tau) * norm.cdf(-d1(spot, strike, vol, tau, r, q))
 
 
 def undiscBSOptFwd(isCall, fwd, strike, vol, tau):
@@ -362,73 +478,3 @@ def CEVSpot(isCall, spot, strike, tau, lamda, p, r, q):
         )
 
     return Price
-
-
-class customFunc:
-    """Define the customerized functors for functions used in local vol model, including:
-    mu(t,x)     :   the drift function
-    sigma(t,x)  :   the diffusion function
-    r(t,x)      :   the process for short rates"""
-
-    def __init__(self, category, **kwargs):
-        self.category = category
-        self.params = kwargs
-
-    def __call__(self, t, x_t):
-        if self.category.upper() == "CONSTANT":
-            a = self.params.get("a", None)
-            if a is not None:
-                return a * np.ones_like(x_t)
-        elif self.category.upper() == "LINEAR":
-            a = self.params.get("a", None)
-            b = self.params.get("b", None)
-            if not None in [a, b]:
-                return a + b * x_t
-        elif self.category.upper() == "RELU":
-            a = self.params.get("a", None)
-            b = self.params.get("b", None)
-            if not None in [a, b]:
-                return np.maximum(a + b * x_t, 0)
-        elif self.category.upper() == "CEV":
-            lamda = self.params.get("lamda", None)
-            p = self.params.get("p", None)
-            if not None in [lamda, p]:
-                return lamda * x_t ** p
-        elif self.category.upper() == "EXP":
-            c = self.params.get("c", None)
-            d = self.params.get("d", None)
-            if not None in [c, d]:
-                return c * np.exp(d * x_t)
-        elif self.category.upper() == "EXP RELU":
-            a = self.params.get("a", None)
-            b = self.params.get("b", None)
-            c = self.params.get("c", None)
-            if not None in [a, b, c]:
-                return np.maximum(a * np.exp(b * x_t) + c, 0)
-        elif self.category.upper() == "EXP DIFF":
-            # call: x_t*e^{-q*(T-t)} - k*e^{-r*(T-t)}
-            # put:  k*e^{-r*(T-t)} - x_t*e^{-q*(T-t)}
-            isCall = self.params.get("isCall", None)
-            k = self.params.get("k", None)
-            r = self.params.get("r", None)
-            q = self.params.get("q", None)
-            T = self.params.get("T", None)
-            if not None in [isCall, k, r, q, T]:
-                if isCall:
-                    return x_t * np.exp(-q * (T - t)) - k * np.exp(-r * (T - t))
-                else:
-                    return k * np.exp(-r * (T - t)) - x_t * np.exp(-q * (T - t))
-        elif self.category.upper() == "EXP DIFF 2":
-            # e^a*e^{-q*(T-t)} - e^k*e^{-r*(T-t)}
-            isCall = self.params.get("isCall", None)
-            k = self.params.get("k", None)
-            r = self.params.get("r", None)
-            q = self.params.get("q", None)
-            T = self.params.get("T", None)
-            if not None in [isCall, k, r, q, T]:
-                if isCall:
-                    return np.exp(x_t - q * (T - t)) - np.exp(k - r * (T - t))
-                else:
-                    return np.exp(k - r * (T - t)) - np.exp(x_t - q * (T - t))
-
-        raise ValueError("Input parameters not found!")

@@ -14,21 +14,75 @@ import scipy.optimize
 import scipy.interpolate
 import scipy.sparse
 from scipy.stats import norm, ncx2
+from Utils.other_utils import customFunc
+from Utils.other_utils import dictGetAttr
 import logging
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
-def dictGetAttr(dic, key, val):
-    """This method obtains class attributes from the input key-word dictionary by key lookup.
-    If key nonexist, prints a warning message and use default value"""
-    key = key.upper()
-    if key in dic:
-        return dic.pop(key)
-    else:
-        logger.warning(f"The {key} attribute is not provide. Use default value {val}.")
-        return val
+class cevMixin:
+    """This is the mixin class for CEV model in local vol objects.
+    The super() call delegates some of the initialization to the parent class."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.cev_lamda = dictGetAttr(self.other_params, "lamda", None)
+        self.cev_p = dictGetAttr(self.other_params, "p", None)
+        if self.isLog:
+            # TODO: implement CEV for log price
+            raise NotImplementedError(
+                "log version of CEV pricer has yet to be impleted!"
+            )
+        self.r = customFunc("constant", a=self.ir)
+        self.mu = customFunc("linear", a=0, b=self.ir - self.dividend_yield)
+        self.sigma = customFunc("cev", lamda=self.cev_lamda, p=self.cev_p)
+
+        self.mesh = Mesh(
+            self.tau,
+            self.x0,
+            r=self.r,
+            mu=self.mu,
+            sigma=self.sigma,
+            f_up=self.f_up,
+            f_dn=self.f_dn,
+            g=self.g,
+            **self.other_params,
+        )
+
+
+class gbmMixin:
+    """This is the mixin class for GBM model in local vol objects.
+    The super() call delegates some of the initialization to the parent class."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.bsvol = dictGetAttr(self.other_params, "vol", None)
+        if not self.isLog:
+            self.r = customFunc("constant", a=self.ir)
+            self.mu = customFunc("linear", a=0, b=self.ir - self.dividend_yield)
+            # b is BS volatility
+            self.sigma = customFunc("linear", a=0, b=self.bsvol)
+        else:
+            self.r = customFunc("constant", a=self.ir)
+            self.mu = customFunc(
+                "constant", a=self.ir - self.dividend_yield - 0.5 * self.bsvol ** 2
+            )
+            self.sigma = customFunc("constant", a=self.bsvol)
+
+        self.mesh = Mesh(
+            self.tau,
+            self.x0,
+            r=self.r,
+            mu=self.mu,
+            sigma=self.sigma,
+            f_up=self.f_up,
+            f_dn=self.f_dn,
+            g=self.g,
+            **self.other_params,
+        )
 
 
 class Mesh:

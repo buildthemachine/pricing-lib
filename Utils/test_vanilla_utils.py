@@ -5,7 +5,7 @@ Date:       12/21/2020
 """
 
 import unittest
-import Utils.vanilla_utils
+import Utils.other_utils
 import numpy as np
 from scipy.stats import norm
 import logging
@@ -290,15 +290,15 @@ class Test_customFunc(unittest.TestCase):
     def setUp(self):
         logger.info("Setting up class instrument...")
         self.eps = 1e-8
-        self.func1 = Utils.vanilla_utils.customFunc("constant", a=1)
-        self.func2 = Utils.vanilla_utils.customFunc("linear", a=1, b=10)
-        self.func3 = Utils.vanilla_utils.customFunc("RELU", a=100, b=-200)
-        self.func4 = Utils.vanilla_utils.customFunc("CEV", lamda=3.14, p=0.5)
-        self.func5 = Utils.vanilla_utils.customFunc("EXP", c=3.14, d=0.5)
-        self.func6 = Utils.vanilla_utils.customFunc("RELU", a=5)
-        self.func7 = Utils.vanilla_utils.customFunc("Exp RELU", a=1.2, b=3.14, c=-24)
-        self.func8 = Utils.vanilla_utils.customFunc("Exp RELU", a=1.2, b=3.14, c=-2400)
-        self.func9 = Utils.vanilla_utils.customFunc(
+        self.func1 = Utils.other_utils.customFunc("constant", a=1)
+        self.func2 = Utils.other_utils.customFunc("linear", a=1, b=10)
+        self.func3 = Utils.other_utils.customFunc("RELU", a=100, b=-200)
+        self.func4 = Utils.other_utils.customFunc("CEV", lamda=3.14, p=0.5)
+        self.func5 = Utils.other_utils.customFunc("EXP", c=3.14, d=0.5)
+        self.func6 = Utils.other_utils.customFunc("RELU", a=5)
+        self.func7 = Utils.other_utils.customFunc("Exp RELU", a=1.2, b=3.14, c=-24)
+        self.func8 = Utils.other_utils.customFunc("Exp RELU", a=1.2, b=3.14, c=-2400)
+        self.func9 = Utils.other_utils.customFunc(
             "EXP DIFF", isCall=True, k=107, r=0.05, q=0.03, T=7
         )
 
@@ -347,7 +347,7 @@ class Test_funcWrapper(unittest.TestCase):
             ir=0.05,
             dividend_yield=0.02,
         )
-        self.bso = Utils.vanilla_utils.BS_obj(
+        self.bso = Utils.vanilla_utils.GBM_obj(
             self.isCall,
             self.spot,
             self.strike,
