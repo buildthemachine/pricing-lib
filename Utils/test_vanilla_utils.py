@@ -201,7 +201,13 @@ class Test_Monotonic(unittest.TestCase):
         prices = []
         for s in sig0:
             so = Utils.vanilla_utils.sabr_black_vol(
-                isCall=True, x0=100, strike=100, tau=1, sabr_params=[s, 0.8, -0.2, 0.5]
+                isCall=True,
+                x0=100,
+                strike=100,
+                tau=1,
+                ir=0,
+                dividend_yield=0,
+                sabr_params=[s, 0.8, -0.2, 0.5],
             )
             prices.append(so.price())
         self.assertTrue(np.all(np.diff(prices) > 0))
@@ -215,6 +221,8 @@ class Test_Monotonic(unittest.TestCase):
                 x0=100,
                 strike=100,
                 tau=1,
+                ir=0,
+                dividend_yield=0,
                 sabr_params=[0.08, 0.8, -0.2, alpha],
             )
             prices.append(so.price())
@@ -357,7 +365,13 @@ class Test_funcWrapper(unittest.TestCase):
             dividend_yield=0.02,
         )
         self.so = Utils.vanilla_utils.sabr_black_vol(
-            self.isCall, self.spot, self.strike, self.tau, [0.06, 0.8, -0.2, 0.5]
+            self.isCall,
+            self.spot,
+            self.strike,
+            self.tau,
+            ir=0,
+            dividend_yield=0,
+            sabr_params=[0.06, 0.8, -0.2, 0.5],
         )
 
     def test_price(self):
@@ -380,3 +394,7 @@ class Test_funcWrapper(unittest.TestCase):
                 self.isCall, self.spot, self.strike, 0.2, self.tau, 0.05, 0.02
             ),
         )
+
+
+if __name__ == "__main__":
+    unittest.main()

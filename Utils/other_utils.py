@@ -117,7 +117,7 @@ class customFunc:
             x0 = self.params.get("middle_point", None)
             left_func = self.params.get("left_functor", None)
             right_func = self.params.get("right_functor", None)
-            side = self.params.get("side", None).upper()
+            side = self.params.get("side", "right").upper()
             if side not in ["LEFT", "RIGHT"]:
                 raise ValueError("Side has unexpected value!")
             if side == "RIGHT":
