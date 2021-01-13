@@ -840,14 +840,149 @@ class test_cev_euro_barrieropt_asymptotics(unittest.TestCase):
             Mlow=0,
         )
 
-    def test_priceEquivalence(self):
-        print(1)
+    def test_asymptotics(self):
         self.assertTrue(
             np.fabs(self.pde_cont_call_dno_1.Price() / self.bs_cev_call_1.Price() - 1)
             < self.eps
         )
         self.assertTrue(
             np.fabs(self.pde_cont_call_uno_1.Price() / self.bs_cev_call_1.Price() - 1)
+            < self.eps
+        )
+
+
+class test_discrete_barrieropt_gbm(unittest.TestCase):
+    def setUp(self):
+        logger.info("Setting up class instrument...")
+        self.tau = 10
+        self.underlying = 100
+        self.strike = 100
+        self.theta = 0.5  # Theta controls explicit/implicit/Crank-Nicolson
+        self.ir = 0.05
+        self.dividend_yield = 0.02
+        self.bsvol = 0.31
+        self.eps = 1e-2
+
+        self.barrier = 500
+        self.bs_disc_call_uno_1 = instruments.european_single_barrier_option(
+            isCall=True,
+            isContinuous=False,
+            flavor="UP-AND-OUT",
+            strike=self.strike,
+            underlying=self.underlying,
+            expiration=self.tau,
+            ir=self.ir,
+            dividend_yield=self.dividend_yield,
+            barrier=self.barrier,
+            Engine=["analytical", "GBM"],
+            vol=self.bsvol,
+            barrier_obs_freq="hourly",
+        )
+
+        self.bs_cont_call_uno_1 = instruments.european_single_barrier_option(
+            isCall=True,
+            isContinuous=True,
+            flavor="UP-AND-OUT",
+            strike=self.strike,
+            underlying=self.underlying,
+            expiration=self.tau,
+            ir=self.ir,
+            dividend_yield=self.dividend_yield,
+            barrier=self.barrier,
+            Engine=["analytical", "GBM"],
+            vol=self.bsvol,
+        )
+
+        self.barrier = 300
+        self.bs_disc_call_uno_2 = instruments.european_single_barrier_option(
+            isCall=True,
+            isContinuous=False,
+            flavor="UP-AND-OUT",
+            strike=self.strike,
+            underlying=self.underlying,
+            expiration=self.tau,
+            ir=self.ir,
+            dividend_yield=self.dividend_yield,
+            barrier=self.barrier,
+            Engine=["analytical", "GBM"],
+            vol=self.bsvol,
+            barrier_obs_freq="monthly",
+        )
+
+        self.bs_disc_call_uno_2_pde = instruments.european_single_barrier_option(
+            isCall=True,
+            isContinuous=False,
+            flavor="UP-AND-OUT",
+            strike=self.strike,
+            underlying=self.underlying,
+            expiration=self.tau,
+            ir=self.ir,
+            dividend_yield=self.dividend_yield,
+            barrier=self.barrier,
+            Engine=["PDE", "GBM"],
+            vol=self.bsvol,
+            barrierObsFreq="monthly",
+            interp="cubic spline",
+            M=300,  # spatial grids
+            N=300,  # time grids
+            Mhigh=self.barrier * 3,
+            Mlow=0,
+        )
+
+        self.bs_disc_call_uni_2 = instruments.european_single_barrier_option(
+            isCall=True,
+            isContinuous=False,
+            flavor="UP-AND-IN",
+            strike=self.strike,
+            underlying=self.underlying,
+            expiration=self.tau,
+            ir=self.ir,
+            dividend_yield=self.dividend_yield,
+            barrier=self.barrier,
+            Engine=["analytical", "GBM"],
+            vol=self.bsvol,
+            barrier_obs_freq="monthly",
+        )
+
+        self.bs_disc_call_uni_2_pde = instruments.european_single_barrier_option(
+            isCall=True,
+            isContinuous=False,
+            flavor="UP-AND-IN",
+            strike=self.strike,
+            underlying=self.underlying,
+            expiration=self.tau,
+            ir=self.ir,
+            dividend_yield=self.dividend_yield,
+            barrier=self.barrier,
+            Engine=["PDE", "GBM"],
+            vol=self.bsvol,
+            barrierObsFreq="monthly",
+            interp="cubic spline",
+            M=300,  # spatial grids
+            N=300,  # time grids
+            Mhigh=self.barrier * 3,
+            Mlow=0,
+        )
+
+    def test_asymptotics(self):
+        self.assertTrue(
+            np.fabs(
+                self.bs_disc_call_uno_1.Price() / self.bs_cont_call_uno_1.Price() - 1
+            )
+            < self.eps
+        )
+        self.assertTrue(
+            np.fabs(
+                self.bs_disc_call_uno_2.Price() / self.bs_disc_call_uno_2_pde.Price()
+                - 1
+            )
+            < self.eps
+        )
+        self.assertTrue(
+            np.fabs(
+                self.bs_disc_call_uni_2.Price() / self.bs_disc_call_uni_2_pde.Price()
+                - 1
+            )
             < self.eps
         )
 

@@ -17,6 +17,15 @@ import numpy as np
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+frequency_counts_dict = {
+    "HOURLY": 262 * 8,
+    "DAILY": 262,
+    "WEEKLY": 52,
+    "MONTHLY": 12,
+    "QUARTERLY": 4,
+    "ANNUALLY": 1,
+}
+
 
 def dictGetAttr(dic, key, val):
     """This method obtains class attributes from the input key-word dictionary by key lookup.
@@ -129,3 +138,7 @@ class customFunc:
             return np.concatenate((res_left, res_right))
 
         raise ValueError(f"Input category {self.category} not found!")
+
+
+if __name__ == "__main__":
+    unittest.main()

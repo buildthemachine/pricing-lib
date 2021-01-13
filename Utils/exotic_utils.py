@@ -8,7 +8,7 @@ Date:       1/1/2021
 
 import numpy as np
 from scipy.stats import norm
-from Utils.other_utils import dictGetAttr
+from Utils.other_utils import dictGetAttr, frequency_counts_dict
 from Utils.vanilla_utils import BSOpt, single_asset_vol_base
 import logging
 
@@ -39,6 +39,17 @@ class GBM_barrier_obj(single_asset_vol_base):
         self.vol = dictGetAttr(self.other_params, "vol", None)
         if not self.isContinuous:
             self.m_intervals = dictGetAttr(self.other_params, "m_intervals", None)
+            if not self.m_intervals:
+                self.barrier_obs_freq = dictGetAttr(
+                    self.other_params, "barrier_obs_freq", None
+                ).upper()
+                if not self.barrier_obs_freq:
+                    raise ValueError(
+                        "Need to provide observation frequency for discrete barrier options!"
+                    )
+                self.m_intervals = (
+                    self.tau * frequency_counts_dict[self.barrier_obs_freq]
+                )
 
     def price(self):
         if self.isContinuous:
@@ -86,7 +97,7 @@ class GBM_barrier_obj(single_asset_vol_base):
                     self.ir,
                     self.dividend_yield,
                 )
-        else:  # If NOT continuous
+        else:  # If barrier is NOT continuous observed
             if self.flavor == "DOWN-AND-IN":
                 return single_barrier_dni(
                     self.isCall,

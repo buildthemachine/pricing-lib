@@ -15,7 +15,7 @@ import scipy.interpolate
 import scipy.sparse
 from scipy.stats import norm, ncx2
 from Utils.other_utils import customFunc
-from Utils.other_utils import dictGetAttr
+from Utils.other_utils import dictGetAttr, frequency_counts_dict
 import logging
 
 logger = logging.getLogger(__name__)
@@ -99,6 +99,8 @@ class Mesh:
     f_up(t,x)    : functor for upper boundary condition for x=M_high
     f_dn(t,x)    : functor for lower boundary condition for x=M_low
     g(x)         : terminal condition at time t=T
+    This class also takes care of the discrete spatial grid value resets at prescribed time periods.
+    Applications of this reset feature includes discrete barrier options.
     """
 
     def __init__(self, tau, underlying, **kwargs):
@@ -117,8 +119,8 @@ class Mesh:
             self._n = dictGetAttr(kwargs, "n", 10)  # time grid discritization
             self._tGrid, self._xGrid = self._genGrid()
         else:
-            self._tGrid = dictGetAttr(kwargs, "time grid", None)
-            self._xGrid = dictGetAttr(kwargs, "x grid", None)
+            self._tGrid = dictGetAttr(kwargs, "timeGrid", None)
+            self._xGrid = dictGetAttr(kwargs, "xGrid", None)
             assert (
                 self._tGrid and self._xGrid
             )  # Check the grids have been successfully created
@@ -127,6 +129,35 @@ class Mesh:
 
         assert self._tGrid[0] == 0 and self._tGrid[-1] == self.tau
         assert self._xGrid[0] == self._Mlow and self._xGrid[-1] == self._Mhigh
+
+        # Time grid with resets:
+        self._hasResets = dictGetAttr(kwargs, "hasResets", False)
+        self._tResetGrid = dictGetAttr(kwargs, "resetTimeGrid", None)
+        self._resetFreq = dictGetAttr(kwargs, "barrierObsFreq", None)
+        if self._hasResets:
+            if not self._tResetGrid:  # If reset time grid not specified
+                if not self._resetFreq:
+                    raise Exception(
+                        "Missing reset time grid parameters! \nPlease specify either the reset frequency, or the reset grid."
+                    )
+                self._tResetGrid = np.linspace(
+                    0,
+                    self.tau,
+                    num=self.tau * frequency_counts_dict[self._resetFreq.upper()],
+                )[1:]
+            self._tGrid = np.concatenate((self._tGrid, self._tResetGrid))
+            self._tGrid = np.unique(np.sort(self._tGrid))
+            self._n = len(self._tGrid) - 1  # See Andersen page 45 for '-1'
+            self.barrier = dictGetAttr(kwargs, "barrier", None)
+            self.flavor = dictGetAttr(kwargs, "flavor", None).upper()
+            if self.flavor == "UP-AND-OUT":
+                self._resetMask = 1.0 * (self._xGrid < self.barrier)
+            elif self.flavor == "DOWN-AND-OUT":
+                self._resetMask = 1.0 * (self._xGrid > self.barrier)
+            else:
+                raise Exception("Unsupported option flavor!")
+            self._resetMask = self._resetMask[1:-1]
+
         func_dict = {
             "mu": "drift",
             "sigma": "diffusion",
@@ -146,7 +177,7 @@ class Mesh:
 
     def _backwardInduction(self):
         """This is the backward induction (in time) method used to solve the PDE:
-        partial V/partial t + AV=0"""
+        partial V/partial t + AV = 0"""
         V0 = np.zeros((self._n + 1, self._m))
         V0[self._n] = self._g(self.tau, self._xGrid[1:-1])
         omega = np.zeros((self._n + 1, self._m))  # omega controls the boundary
@@ -183,6 +214,11 @@ class Mesh:
                 [c_vec, u_vec[:-1], l_vec[1:]], [0, 1, -1]
             ).toarray()
 
+            # Extra step if discrete resets in place:
+            if self._hasResets:
+                if self._tGrid[i + 1] in self._tResetGrid:  # Improve this search
+                    V0[i + 1] = V0[i + 1] * self._resetMask
+
             # Write 2.18 as: T*V(t_i)=S
             T = np.eye(self._m) - self._theta * delta_t * A_mat
             S = (
@@ -209,3 +245,21 @@ class Mesh:
         tGrid = np.linspace(0, self.tau, self._n + 1)
         xGrid = np.linspace(self._Mlow, self._Mhigh, self._m + 2)
         return tGrid, xGrid
+
+
+class Mesh_discrete_resets(Mesh):
+    """This is the adjusted mesh class with spatial grid value resets at prescribed time
+    periods.
+    Applications of this mesh class includes:
+    1. Discrete barrier options where the barrier is observed at prescribed discrete time
+    stamps.
+    """
+
+    def __init__(self):
+        super().__init__(tau, underlying, **kwargs)
+        # if self._equiGrid:
+        #     raise ValueError(
+        #         """In discrete barrier options, the barrier observation dates
+        #         should be included in the time grids, therefore equi-distance grid is
+        #         not recommended!"""
+        #     )

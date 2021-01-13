@@ -127,8 +127,78 @@ class single_barrier_localvol_base(single_asset_vol_base):
             raise NotImplementedError(
                 "Not supported! For knock-in options? Make sure you are using the Facade class!"
             )
+        self.other_params["HASRESETS"] = not self.isContinuous
         if not self.isLog:
-            if self.flavor == "DOWN-AND-OUT":
+            if self.isContinuous:
+                if self.flavor == "DOWN-AND-OUT":
+                    if self.isCall:
+                        self.f_up = customFunc(
+                            "Exp Diff",
+                            isCall=self.isCall,
+                            k=self.strike,
+                            r=self.ir,
+                            q=self.dividend_yield,
+                            T=self.tau,
+                        )
+                        self.f_dn = customFunc("constant", a=0)
+                        g_left = customFunc("constant", a=0)
+                        g_right = customFunc("RELU", a=-self.strike, b=1)
+                        self.g = customFunc(
+                            "BI-PIECEWISE",
+                            middle_point=self.barrier,
+                            left_functor=g_left,
+                            right_functor=g_right,
+                            side="Right",
+                        )
+                    else:
+                        self.f_up = customFunc("constant", a=0)
+                        self.f_dn = customFunc("constant", a=0)
+                        g_left = customFunc("constant", a=0)
+                        g_right = customFunc("RELU", a=self.strike, b=-1)
+                        self.g = customFunc(
+                            "BI-PIECEWISE",
+                            middle_point=self.barrier,
+                            left_functor=g_left,
+                            right_functor=g_right,
+                            side="Right",
+                        )
+                elif self.flavor == "UP-AND-OUT":
+                    if self.isCall:
+                        self.f_up = customFunc("constant", a=0)
+                        self.f_dn = customFunc("constant", a=0)
+                        g_left = customFunc("RELU", a=-self.strike, b=1)
+                        g_right = customFunc("constant", a=0)
+                        self.g = customFunc(
+                            "BI-PIECEWISE",
+                            middle_point=self.barrier,
+                            left_functor=g_left,
+                            right_functor=g_right,
+                            side="Right",
+                        )
+                    else:
+                        self.f_up = customFunc("constant", a=0)
+                        self.f_dn = customFunc(
+                            "Exp Diff",
+                            isCall=self.isCall,
+                            k=self.strike,
+                            r=self.ir,
+                            q=self.dividend_yield,
+                            T=self.tau,
+                        )
+                        g_left = customFunc("RELU", a=self.strike, b=-1)
+                        g_right = customFunc("constant", a=0)
+                        self.g = customFunc(
+                            "BI-PIECEWISE",
+                            middle_point=self.barrier,
+                            left_functor=g_left,
+                            right_functor=g_right,
+                            side="Right",
+                        )
+            else:
+                # If discrete, the boundary and terminal conditions are the same as vanilla options.
+                # The reset events are imposed in the backward propaation algorithm.
+                self.other_params["BARRIER"] = self.barrier
+                self.other_params["FLAVOR"] = self.flavor
                 if self.isCall:
                     self.f_up = customFunc(
                         "Exp Diff",
@@ -139,40 +209,7 @@ class single_barrier_localvol_base(single_asset_vol_base):
                         T=self.tau,
                     )
                     self.f_dn = customFunc("constant", a=0)
-                    g_left = customFunc("constant", a=0)
-                    g_right = customFunc("RELU", a=-self.strike, b=1)
-                    self.g = customFunc(
-                        "BI-PIECEWISE",
-                        middle_point=self.barrier,
-                        left_functor=g_left,
-                        right_functor=g_right,
-                        side="Right",
-                    )
-                else:
-                    self.f_up = customFunc("constant", a=0)
-                    self.f_dn = customFunc("constant", a=0)
-                    g_left = customFunc("constant", a=0)
-                    g_right = customFunc("RELU", a=self.strike, b=-1)
-                    self.g = customFunc(
-                        "BI-PIECEWISE",
-                        middle_point=self.barrier,
-                        left_functor=g_left,
-                        right_functor=g_right,
-                        side="Right",
-                    )
-            elif self.flavor == "UP-AND-OUT":
-                if self.isCall:
-                    self.f_up = customFunc("constant", a=0)
-                    self.f_dn = customFunc("constant", a=0)
-                    g_left = customFunc("RELU", a=-self.strike, b=1)
-                    g_right = customFunc("constant", a=0)
-                    self.g = customFunc(
-                        "BI-PIECEWISE",
-                        middle_point=self.barrier,
-                        left_functor=g_left,
-                        right_functor=g_right,
-                        side="Right",
-                    )
+                    self.g = customFunc("RELU", a=-self.strike, b=1)
                 else:
                     self.f_up = customFunc("constant", a=0)
                     self.f_dn = customFunc(
@@ -183,15 +220,7 @@ class single_barrier_localvol_base(single_asset_vol_base):
                         q=self.dividend_yield,
                         T=self.tau,
                     )
-                    g_left = customFunc("RELU", a=self.strike, b=-1)
-                    g_right = customFunc("constant", a=0)
-                    self.g = customFunc(
-                        "BI-PIECEWISE",
-                        middle_point=self.barrier,
-                        left_functor=g_left,
-                        right_functor=g_right,
-                        side="Right",
-                    )
+                    self.g = customFunc("RELU", a=self.strike, b=-1)
 
     def price(self):
         if not self.isLog:
@@ -236,7 +265,7 @@ class single_barrier_localvol_CEV(cevMixin, single_barrier_localvol_base):
             barrier=barrier,
             ir=ir,
             dividend_yield=dividend_yield,
-            **kwargs
+            **kwargs,
         )
 
 
@@ -268,7 +297,7 @@ class single_barrier_localvol_CEV_Facade:
                 barrier,
                 ir,
                 dividend_yield,
-                **kwargs
+                **kwargs,
             )
         elif flavor == "DOWN-AND-IN":
             self.barrierObj = single_barrier_localvol_CEV(
@@ -281,7 +310,7 @@ class single_barrier_localvol_CEV_Facade:
                 barrier,
                 ir,
                 dividend_yield,
-                **kwargs
+                **kwargs,
             )
             self.CEVObj = CEV_obj(isCall, x0, strike, tau, ir, dividend_yield, **kwargs)
         elif flavor == "UP-AND-IN":
@@ -295,7 +324,7 @@ class single_barrier_localvol_CEV_Facade:
                 barrier,
                 ir,
                 dividend_yield,
-                **kwargs
+                **kwargs,
             )
             self.CEVObj = CEV_obj(isCall, x0, strike, tau, ir, dividend_yield, **kwargs)
 
@@ -343,7 +372,7 @@ class single_barrier_localvol_GBM(gbmMixin, single_barrier_localvol_base):
             barrier=barrier,
             ir=ir,
             dividend_yield=dividend_yield,
-            **kwargs
+            **kwargs,
         )
 
 
@@ -375,7 +404,7 @@ class single_barrier_localvol_GBM_Facade:
                 barrier,
                 ir,
                 dividend_yield,
-                **kwargs
+                **kwargs,
             )
         elif flavor == "DOWN-AND-IN":
             self.barrierObj = single_barrier_localvol_GBM(
@@ -388,7 +417,7 @@ class single_barrier_localvol_GBM_Facade:
                 barrier,
                 ir,
                 dividend_yield,
-                **kwargs
+                **kwargs,
             )
             self.BSObj = GBM_obj(isCall, x0, strike, tau, ir, dividend_yield, **kwargs)
         elif flavor == "UP-AND-IN":
@@ -402,7 +431,7 @@ class single_barrier_localvol_GBM_Facade:
                 barrier,
                 ir,
                 dividend_yield,
-                **kwargs
+                **kwargs,
             )
             self.BSObj = GBM_obj(isCall, x0, strike, tau, ir, dividend_yield, **kwargs)
 
