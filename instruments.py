@@ -26,7 +26,7 @@ class instrument_base(metaclass=ABCMeta):
     @abstractmethod
     def __init__(
         self,
-        vol_or_price,
+        # vol_or_price,
         isCall,
         strike,
         underlying,
@@ -37,7 +37,7 @@ class instrument_base(metaclass=ABCMeta):
         engine_dict,
         **kwargs,
     ):
-        self.vol_or_price = vol_or_price  # 0: return implied vol; 1: return price
+        # self.vol_or_price = vol_or_price  # 0: return implied vol; 1: return price
         self.isCall = isCall
         self.strike = strike
         self.x0 = underlying
@@ -50,6 +50,12 @@ class instrument_base(metaclass=ABCMeta):
             k.upper(): v for k, v in kwargs.items()
         }  # Convert all keys to upper case.
         self.other_params = kwargs
+        if (self.Engine[0] not in self.engine_dict) or (
+            self.Engine[1] not in self.engine_dict[self.Engine[0]]
+        ):
+            raise KeyError(
+                f"The specified calculation engine is not supported!\n The currently supported engines are:{self.engine_dict}"
+            )
 
     @property
     def Engine(self):
@@ -98,7 +104,6 @@ class european_single_barrier_option(instrument_base):
         **kwargs,
     ):
         super().__init__(
-            self,
             isCall,
             strike,
             underlying,
@@ -116,12 +121,6 @@ class european_single_barrier_option(instrument_base):
         self.isContinuous = isContinuous
         self.flavor = flavor.upper()
         self.barrier = barrier
-        if (self.Engine[0] not in self.engine_dict) or (
-            self.Engine[1] not in self.engine_dict[self.Engine[0]]
-        ):
-            raise KeyError(
-                f"The specified calculation engine is not supported!\n The currently supported engines are:{self.engine_dict}"
-            )
         if self.flavor not in [
             "UP-AND-IN",
             "UP-AND-OUT",
@@ -195,7 +194,6 @@ class european_digital_option(instrument_base):
         **kwargs,
     ):
         super().__init__(
-            self,
             isCall,
             strike,
             underlying,
@@ -211,14 +209,6 @@ class european_digital_option(instrument_base):
             **kwargs,
         )
         self.isCashOrNothing = isCashOrNothing
-        if (self.Engine[0] not in self.engine_dict) or (
-            self.Engine[1] not in self.engine_dict[self.Engine[0]]
-        ):
-            logger.warning(
-                "The specified calculation engine is not supported!\nThe currently supported engines are:"
-            )
-            logger.warning(self.engine_dict)
-            raise KeyError
 
         # Obtaining underlying volatility object
         if self.Engine[0] == "ANALYTICAL":
@@ -283,6 +273,118 @@ class european_digital_option(instrument_base):
             raise NotImplementedError("Monte Carlo engine has yet to be implemented")
 
 
+class american_vanilla_option(instrument_base):
+    """Define American option class, where early exercise is available throughout maturity T"""
+
+    def __init__(
+        self,
+        isCall,
+        strike,
+        underlying,
+        expiration,
+        ir,
+        dividend_yield,
+        Engine=["PDE", "GBM"],
+        **kwargs,
+    ):
+        super().__init__(
+            isCall,
+            strike,
+            underlying,
+            expiration,
+            ir,
+            dividend_yield,
+            Engine,
+            engine_dict={
+                # "ANALYTICAL": ["GBM", "CEV", "DISPLACED GBM", "SABR"],
+                "PDE": ["GBM", "CEV"],
+                "MONTE CARLO": ["TBD"],
+            },  # The suppported engines vary by each instrument.
+            **kwargs,
+        )
+        # Obtaining underlying volatility object
+        if self.Engine[0] == "PDE":
+            if self.Engine[1] == "GBM":
+                self._priceObj = LocalVol.lv.american_vanilla_localvol_GBM(
+                    self.isCall,
+                    self.x0,
+                    self.strike,
+                    self.tau,
+                    ir=self.ir,
+                    dividend_yield=self.dividend_yield,
+                    **self.other_params,
+                )
+            elif self.Engine[1] == "CEV":
+                self._priceObj = LocalVol.lv.american_vanilla_localvol_CEV(
+                    self.isCall,
+                    self.x0,
+                    self.strike,
+                    self.tau,
+                    isLog=False,
+                    ir=self.ir,
+                    dividend_yield=self.dividend_yield,
+                    **self.other_params,
+                )
+        elif self.Engine[0] == "MONTE CARLO":
+            raise NotImplementedError("Monte Carlo engine has yet to be implemented")
+
+
+class bermudan_vanilla_option(instrument_base):
+    """Define Bermudan option class, where early exercise is possible on a pre-defined time grid till maturity T"""
+
+    def __init__(
+        self,
+        isCall,
+        strike,
+        underlying,
+        expiration,
+        ir,
+        dividend_yield,
+        Engine=["PDE", "GBM"],
+        **kwargs,
+    ):
+        super().__init__(
+            isCall,
+            strike,
+            underlying,
+            expiration,
+            ir,
+            dividend_yield,
+            Engine,
+            engine_dict={
+                # "ANALYTICAL": ["GBM", "CEV", "DISPLACED GBM", "SABR"],
+                "PDE": ["GBM", "CEV"],
+                "MONTE CARLO": ["TBD"],
+            },  # The suppported engines vary by each instrument.
+            **kwargs,
+        )
+        # Obtaining underlying volatility object
+        if self.Engine[0] == "PDE":
+            if self.Engine[1] == "GBM":
+                self._priceObj = LocalVol.lv.bermudan_vanilla_localvol_GBM(
+                    self.isCall,
+                    self.x0,
+                    self.strike,
+                    self.tau,
+                    ir=self.ir,
+                    dividend_yield=self.dividend_yield,
+                    **self.other_params,
+                )
+            elif self.Engine[1] == "CEV":
+                self._priceObj = LocalVol.lv.bermudan_vanilla_localvol_CEV(
+                    self.isCall,
+                    self.x0,
+                    self.strike,
+                    self.tau,
+                    isLog=False,
+                    ir=self.ir,
+                    dividend_yield=self.dividend_yield,
+                    **self.other_params,
+                )
+        elif self.Engine[0] == "MONTE CARLO":
+            raise NotImplementedError("Monte Carlo engine has yet to be implemented")
+
+
 class european_option(instrument_base):
     """Define European options class"""
 
@@ -298,7 +400,6 @@ class european_option(instrument_base):
         **kwargs,
     ):
         super().__init__(
-            self,
             isCall,
             strike,
             underlying,
@@ -313,14 +414,6 @@ class european_option(instrument_base):
             },  # The suppported engines vary by each instrument.
             **kwargs,
         )
-        if (self.Engine[0] not in self.engine_dict) or (
-            self.Engine[1] not in self.engine_dict[self.Engine[0]]
-        ):
-            logger.warning(
-                "The specified calculation engine is not supported!\nThe currently supported engines are:"
-            )
-            logger.warning(self.engine_dict)
-            raise KeyError
 
         # Obtaining underlying volatility object
         if self.Engine[0] == "ANALYTICAL":

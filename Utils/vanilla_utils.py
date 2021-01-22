@@ -24,13 +24,16 @@ class single_asset_vol_base(metaclass=ABCMeta):
     Supports two functions: price and impliedVol"""
 
     @abstractmethod
-    def __init__(self, isCall, x0, strike, tau, ir, dividend_yield, **kwargs):
+    def __init__(
+        self, isCall, x0, strike, tau, ir, dividend_yield, prod_type, **kwargs
+    ):
         self.isCall = isCall
         self.x0 = x0  # x0 can be either forward or spot prices
         self.strike = strike
         self.tau = tau
         self.ir = ir
         self.dividend_yield = dividend_yield
+        self.prod_type = prod_type
 
         kwargs = {
             k.upper(): v for k, v in kwargs.items()
@@ -57,8 +60,20 @@ class single_asset_vol_base(metaclass=ABCMeta):
 class Bachlier_obj(single_asset_vol_base):
     """Pricing object for Bachelier model"""
 
-    def __init__(self, isCall, spot, strike, tau, ir, dividend_yield, **kwargs):
-        super().__init__(isCall, spot, strike, tau, ir, dividend_yield, **kwargs)
+    def __init__(
+        self,
+        isCall,
+        spot,
+        strike,
+        tau,
+        ir,
+        dividend_yield,
+        prod_type="EUROPEAN VANILLA",
+        **kwargs,
+    ):
+        super().__init__(
+            isCall, spot, strike, tau, ir, dividend_yield, prod_type, **kwargs
+        )
         self.vol = dictGetAttr(self.other_params, "vol", None)
 
     def price(self):
@@ -70,8 +85,20 @@ class Bachlier_obj(single_asset_vol_base):
 class CEV_obj(single_asset_vol_base):
     """Pricing object for CEV model"""
 
-    def __init__(self, isCall, spot, strike, tau, ir, dividend_yield, **kwargs):
-        super().__init__(isCall, spot, strike, tau, ir, dividend_yield, **kwargs)
+    def __init__(
+        self,
+        isCall,
+        spot,
+        strike,
+        tau,
+        ir,
+        dividend_yield,
+        prod_type="EUROPEAN VANILLA",
+        **kwargs,
+    ):
+        super().__init__(
+            isCall, spot, strike, tau, ir, dividend_yield, prod_type, **kwargs
+        )
         self.lamda = dictGetAttr(self.other_params, "lamda", None)
         self.p = dictGetAttr(self.other_params, "p", None)
 
@@ -91,8 +118,27 @@ class CEV_obj(single_asset_vol_base):
 class GBM_obj(single_asset_vol_base):
     """Pricing object for Black-Scholes equation"""
 
-    def __init__(self, isCall, spot, strike, tau, ir, dividend_yield, **kwargs):
-        super().__init__(isCall, spot, strike, tau, ir, dividend_yield, **kwargs)
+    def __init__(
+        self,
+        isCall,
+        spot,
+        strike,
+        tau,
+        ir,
+        dividend_yield,
+        prod_type="EUROPEAN VANILLA",
+        **kwargs,
+    ):
+        super().__init__(
+            isCall,
+            spot,
+            strike,
+            tau,
+            ir,
+            dividend_yield,
+            prod_type,
+            **kwargs,
+        )
         self.vol = dictGetAttr(self.other_params, "vol", None)
 
     def price(self):
@@ -111,9 +157,27 @@ class GBM_digital_obj(single_asset_vol_base):
     """Pricing object for European digital options via Black-Scholes"""
 
     def __init__(
-        self, isCall, isCashOrNothing, spot, strike, tau, ir, dividend_yield, **kwargs
+        self,
+        isCall,
+        isCashOrNothing,
+        spot,
+        strike,
+        tau,
+        ir,
+        dividend_yield,
+        prod_type="EUROPEAN DIGITAL",
+        **kwargs,
     ):
-        super().__init__(isCall, spot, strike, tau, ir, dividend_yield, **kwargs)
+        super().__init__(
+            isCall,
+            spot,
+            strike,
+            tau,
+            ir,
+            dividend_yield,
+            prod_type,
+            **kwargs,
+        )
         self.isCashOrNothing = isCashOrNothing
         self.vol = dictGetAttr(self.other_params, "vol", None)
 
@@ -134,9 +198,27 @@ class CEV_digital_obj(single_asset_vol_base):
     """Pricing object for European digital options with CEV dynamics"""
 
     def __init__(
-        self, isCall, isCashOrNothing, spot, strike, tau, ir, dividend_yield, **kwargs
+        self,
+        isCall,
+        isCashOrNothing,
+        spot,
+        strike,
+        tau,
+        ir,
+        dividend_yield,
+        prod_type="EUROPEAN DIGITAL",
+        **kwargs,
     ):
-        super().__init__(isCall, spot, strike, tau, ir, dividend_yield, **kwargs)
+        super().__init__(
+            isCall,
+            spot,
+            strike,
+            tau,
+            ir,
+            dividend_yield,
+            prod_type,
+            **kwargs,
+        )
         self.isCashOrNothing = isCashOrNothing
         self.cev_p = dictGetAttr(self.other_params, "p", None)
         self.cev_lamda = dictGetAttr(self.other_params, "lamda", None)
@@ -182,9 +264,27 @@ class SABR_digital_obj(single_asset_vol_base):
     volatility into digital option pricing formula"""
 
     def __init__(
-        self, isCall, isCashOrNothing, spot, strike, tau, ir, dividend_yield, **kwargs
+        self,
+        isCall,
+        isCashOrNothing,
+        spot,
+        strike,
+        tau,
+        ir,
+        dividend_yield,
+        prod_type="EUROPEAN DIGITAL",
+        **kwargs,
     ):
-        super().__init__(isCall, spot, strike, tau, ir, dividend_yield, **kwargs)
+        super().__init__(
+            isCall,
+            spot,
+            strike,
+            tau,
+            ir,
+            dividend_yield,
+            prod_type,
+            **kwargs,
+        )
         self.isCashOrNothing = isCashOrNothing
         self.sabr_params = dictGetAttr(self.other_params, "SABR_params", None)
 
@@ -213,11 +313,20 @@ class sabr_black_vol(single_asset_vol_base):
     SABR model does not depend on interest rate, therefore set r=q=0"""
 
     def __init__(
-        self, isCall, x0, strike, tau, ir, dividend_yield, sabr_params, eps=1e-6
+        self,
+        isCall,
+        x0,
+        strike,
+        tau,
+        ir,
+        dividend_yield,
+        sabr_params,
+        prod_type="EUROPEAN DIGITAL",
+        eps=1e-6,
     ):
         """This methods provides an interface for constructing a vol smile.
         The strike k provided can be a vector."""
-        super().__init__(isCall, x0, strike, tau, ir, dividend_yield)
+        super().__init__(isCall, x0, strike, tau, ir, dividend_yield, prod_type)
         self.sabr_params = sabr_params
         # If f is too close to k, the sabr formular will have zero on denominator.
         # eps is a threshold for the minimum RELATIVE difference between f and k.

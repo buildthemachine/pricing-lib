@@ -30,9 +30,12 @@ class GBM_barrier_obj(single_asset_vol_base):
         ir,
         dividend_yield,
         barrier,
+        prod_type="EUROPEAN BARRIER",
         **kwargs
     ):
-        super().__init__(isCall, spot, strike, tau, ir, dividend_yield, **kwargs)
+        super().__init__(
+            isCall, spot, strike, tau, ir, dividend_yield, prod_type, **kwargs
+        )
         self.isContinuous = isContinuous
         self.flavor = flavor
         self.barrier = barrier

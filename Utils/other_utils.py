@@ -137,7 +137,9 @@ class customFunc:
             res_right = right_func(t, x_t[~mask])
             return np.concatenate((res_left, res_right))
 
-        raise ValueError(f"Input category {self.category} not found!")
+        raise ValueError(
+            f"Input category {self.category} not found, or some required parameters are missing!"
+        )
 
 
 if __name__ == "__main__":

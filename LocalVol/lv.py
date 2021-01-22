@@ -17,8 +17,22 @@ import numpy as np
 class vanilla_localvol_base(single_asset_vol_base):
     """This is the local volatility base class for vanilla options"""
 
-    def __init__(self, isCall, x0, strike, tau, ir, dividend_yield, **kwargs):
-        super().__init__(isCall, x0, strike, tau, ir, dividend_yield, **kwargs)
+    def __init__(
+        self,
+        isCall,
+        x0,
+        strike,
+        tau,
+        ir,
+        dividend_yield,
+        prod_type,
+        hasresets=False,
+        **kwargs
+    ):
+        super().__init__(
+            isCall, x0, strike, tau, ir, dividend_yield, prod_type, **kwargs
+        )
+        self.other_params["hasResets"] = hasresets
         self.isLog = dictGetAttr(self.other_params, "isLog", False)
         if not self.isLog:
             if self.isCall:
@@ -76,7 +90,8 @@ class vanilla_localvol_base(single_asset_vol_base):
 
 class vanilla_localvol_GBM(gbmMixin, vanilla_localvol_base):
     """Local vol price for Black-Scholes
-    Mixin class must come as the first parameter"""
+    Mixin class must come as the first parameter: In programming this is known as
+    using Mixin to hijack inheritance."""
 
     def __init__(self, isCall, x0, strike, tau, ir, dividend_yield, **kwargs):
         """Recommended additional parameters to be supplied:
@@ -85,7 +100,16 @@ class vanilla_localvol_GBM(gbmMixin, vanilla_localvol_base):
         M_low    :   lower bound in underlying prices
         m, n     :   discretization in underlying/time domain
         """
-        super().__init__(isCall, x0, strike, tau, ir, dividend_yield, **kwargs)
+        super().__init__(
+            isCall,
+            x0,
+            strike,
+            tau,
+            ir,
+            dividend_yield,
+            prod_type="EUROPEAN VANILLA",
+            **kwargs,
+        )
 
 
 class vanilla_localvol_CEV(cevMixin, vanilla_localvol_base):
@@ -99,7 +123,128 @@ class vanilla_localvol_CEV(cevMixin, vanilla_localvol_base):
         M_low    :   lower bound in underlying prices
         m, n     :   discretization in underlying/time domain
         """
-        super().__init__(isCall, x0, strike, tau, ir, dividend_yield, **kwargs)
+        super().__init__(
+            isCall,
+            x0,
+            strike,
+            tau,
+            ir,
+            dividend_yield,
+            prod_type="EUROPEAN VANILLA",
+            **kwargs,
+        )
+
+
+class bermudan_vanilla_localvol_GBM(gbmMixin, vanilla_localvol_base):
+    def __init__(
+        self,
+        isCall,
+        x0,
+        strike,
+        tau,
+        ir,
+        dividend_yield,
+        prod_type="BERMUDAN VANILLA",
+        hasresets=True,
+        **kwargs
+    ):
+        """Recommended additional parameters to be supplied:
+        theta    :   theta=1/2: Crank-Nicolson; theta=1: fully implicit; theta=0: fully explicit
+        M_high   :   upper bound in underlying prices
+        M_low    :   lower bound in underlying prices
+        m, n     :   discretization in underlying/time domain
+        """
+        super().__init__(
+            isCall,
+            x0,
+            strike,
+            tau,
+            ir,
+            dividend_yield,
+            prod_type,
+            hasresets,
+            **kwargs,
+        )
+
+
+class bermudan_vanilla_localvol_CEV(cevMixin, vanilla_localvol_base):
+    def __init__(
+        self,
+        isCall,
+        x0,
+        strike,
+        tau,
+        ir,
+        dividend_yield,
+        prod_type="BERMUDAN VANILLA",
+        hasresets=True,
+        **kwargs
+    ):
+        """Recommended additional parameters to be supplied:
+        theta    :   theta=1/2: Crank-Nicolson; theta=1: fully implicit; theta=0: fully explicit
+        M_high   :   upper bound in underlying prices
+        M_low    :   lower bound in underlying prices
+        m, n     :   discretization in underlying/time domain
+        """
+        super().__init__(
+            isCall,
+            x0,
+            strike,
+            tau,
+            ir,
+            dividend_yield,
+            prod_type,
+            hasresets,
+            **kwargs,
+        )
+
+
+class american_vanilla_localvol_GBM(bermudan_vanilla_localvol_GBM):
+    """For PDE implementation, American option is a sperical situation of a Bermudan, where
+    the early exercise dates are simply thie time grid"""
+
+    def __init__(self, isCall, x0, strike, tau, ir, dividend_yield, **kwargs):
+        """Recommended additional parameters to be supplied:
+        theta    :   theta=1/2: Crank-Nicolson; theta=1: fully implicit; theta=0: fully explicit
+        M_high   :   upper bound in underlying prices
+        M_low    :   lower bound in underlying prices
+        m, n     :   discretization in underlying/time domain
+        """
+        super().__init__(
+            isCall,
+            x0,
+            strike,
+            tau,
+            ir,
+            dividend_yield,
+            prod_type="AMERICAN VANILLA",
+            hasresets=True,
+            **kwargs,
+        )
+
+
+class american_vanilla_localvol_CEV(cevMixin, vanilla_localvol_base):
+    """For PDE implementation, American option is a sperical situation of a Bermudan, where
+    the early exercise dates are simply thie time grid"""
+
+    def __init__(self, isCall, x0, strike, tau, ir, dividend_yield, **kwargs):
+        """Recommended additional parameters to be supplied:
+        theta    :   theta=1/2: Crank-Nicolson; theta=1: fully implicit; theta=0: fully explicit
+        M_high   :   upper bound in underlying prices
+        M_low    :   lower bound in underlying prices
+        m, n     :   discretization in underlying/time domain
+        """
+        super().__init__(
+            isCall,
+            x0,
+            strike,
+            tau,
+            ir,
+            dividend_yield,
+            prod_type="AMERICAN VANILLA",
+            hasresets=True,
+            **kwargs,
+        )
 
 
 class single_barrier_localvol_base(single_asset_vol_base):
@@ -297,6 +442,7 @@ class single_barrier_localvol_CEV_Facade:
                 barrier,
                 ir,
                 dividend_yield,
+                prod_type="EUROPEAN BARRIER",
                 **kwargs,
             )
         elif flavor == "DOWN-AND-IN":
@@ -310,6 +456,7 @@ class single_barrier_localvol_CEV_Facade:
                 barrier,
                 ir,
                 dividend_yield,
+                prod_type="EUROPEAN BARRIER",
                 **kwargs,
             )
             self.CEVObj = CEV_obj(isCall, x0, strike, tau, ir, dividend_yield, **kwargs)
@@ -324,6 +471,7 @@ class single_barrier_localvol_CEV_Facade:
                 barrier,
                 ir,
                 dividend_yield,
+                prod_type="EUROPEAN BARRIER",
                 **kwargs,
             )
             self.CEVObj = CEV_obj(isCall, x0, strike, tau, ir, dividend_yield, **kwargs)
@@ -393,20 +541,21 @@ class single_barrier_localvol_GBM_Facade:
         **kwargs
     ):
         self.flavor = flavor.upper()
-        if flavor in ["DOWN-AND-OUT", "UP-AND-OUT"]:
+        if self.flavor in ["DOWN-AND-OUT", "UP-AND-OUT"]:
             self.barrierObj = single_barrier_localvol_GBM(
                 isCall,
                 isContinuous,
-                flavor,
+                self.flavor,
                 x0,
                 strike,
                 tau,
                 barrier,
                 ir,
                 dividend_yield,
+                prod_type="EUROPEAN BARRIER",
                 **kwargs,
             )
-        elif flavor == "DOWN-AND-IN":
+        elif self.flavor == "DOWN-AND-IN":
             self.barrierObj = single_barrier_localvol_GBM(
                 isCall,
                 isContinuous,
@@ -417,6 +566,7 @@ class single_barrier_localvol_GBM_Facade:
                 barrier,
                 ir,
                 dividend_yield,
+                prod_type="EUROPEAN BARRIER",
                 **kwargs,
             )
             self.BSObj = GBM_obj(isCall, x0, strike, tau, ir, dividend_yield, **kwargs)
@@ -431,6 +581,7 @@ class single_barrier_localvol_GBM_Facade:
                 barrier,
                 ir,
                 dividend_yield,
+                prod_type="EUROPEAN BARRIER",
                 **kwargs,
             )
             self.BSObj = GBM_obj(isCall, x0, strike, tau, ir, dividend_yield, **kwargs)
@@ -523,7 +674,15 @@ class digital_localvol_GBM(gbmMixin, digital_localvol_base):
         m, n     :   discretization in underlying/time domain
         """
         super().__init__(
-            isCall, isCashOrNothing, x0, strike, tau, ir, dividend_yield, **kwargs
+            isCall,
+            isCashOrNothing,
+            x0,
+            strike,
+            tau,
+            ir,
+            dividend_yield,
+            prod_type="EUROPEAN DIGITAL",
+            **kwargs,
         )
 
 
@@ -541,5 +700,13 @@ class digital_localvol_CEV(cevMixin, digital_localvol_base):
         m, n     :   discretization in underlying/time domain
         """
         super().__init__(
-            isCall, isCashOrNothing, x0, strike, tau, ir, dividend_yield, **kwargs
+            isCall,
+            isCashOrNothing,
+            x0,
+            strike,
+            tau,
+            ir,
+            dividend_yield,
+            prod_type="EUROPEAN DIGITAL",
+            **kwargs,
         )

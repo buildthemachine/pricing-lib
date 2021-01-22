@@ -16,6 +16,7 @@ import scipy.sparse
 from scipy.stats import norm, ncx2
 from Utils.other_utils import customFunc
 from Utils.other_utils import dictGetAttr, frequency_counts_dict
+from Utils.vanilla_utils import single_asset_vol_base
 import logging
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,7 @@ class cevMixin:
         self.mesh = Mesh(
             self.tau,
             self.x0,
+            prod_type=self.prod_type,
             r=self.r,
             mu=self.mu,
             sigma=self.sigma,
@@ -75,6 +77,7 @@ class gbmMixin:
         self.mesh = Mesh(
             self.tau,
             self.x0,
+            prod_type=self.prod_type,
             r=self.r,
             mu=self.mu,
             sigma=self.sigma,
@@ -109,6 +112,7 @@ class Mesh:
         kwargs = {
             k.upper(): v for k, v in kwargs.items()
         }  # Convert all keys to upper case.
+        self.prod_type = dictGetAttr(kwargs, "prod_type", "EUROPEAN_VANILLA")
         self._Mhigh = dictGetAttr(kwargs, "Mhigh", self.x0 * 3)
         self._Mlow = dictGetAttr(kwargs, "Mlow", -self.x0)
         self._theta = dictGetAttr(kwargs, "theta", 0.5)
@@ -132,31 +136,29 @@ class Mesh:
 
         # Time grid with resets:
         self._hasResets = dictGetAttr(kwargs, "hasResets", False)
-        self._tResetGrid = dictGetAttr(kwargs, "resetTimeGrid", None)
-        self._resetFreq = dictGetAttr(kwargs, "barrierObsFreq", None)
         if self._hasResets:
-            if not self._tResetGrid:  # If reset time grid not specified
-                if not self._resetFreq:
-                    raise Exception(
-                        "Missing reset time grid parameters! \nPlease specify either the reset frequency, or the reset grid."
-                    )
-                self._tResetGrid = np.linspace(
-                    0,
-                    self.tau,
-                    num=self.tau * frequency_counts_dict[self._resetFreq.upper()],
-                )[1:]
-            self._tGrid = np.concatenate((self._tGrid, self._tResetGrid))
-            self._tGrid = np.unique(np.sort(self._tGrid))
-            self._n = len(self._tGrid) - 1  # See Andersen page 45 for '-1'
-            self.barrier = dictGetAttr(kwargs, "barrier", None)
-            self.flavor = dictGetAttr(kwargs, "flavor", None).upper()
-            if self.flavor == "UP-AND-OUT":
-                self._resetMask = 1.0 * (self._xGrid < self.barrier)
-            elif self.flavor == "DOWN-AND-OUT":
-                self._resetMask = 1.0 * (self._xGrid > self.barrier)
+            if "AMERICAN" in self.prod_type:
+                # Reset at every time step for American style
+                self._tResetGrid = self._tGrid
             else:
-                raise Exception("Unsupported option flavor!")
-            self._resetMask = self._resetMask[1:-1]
+                self._tResetGrid = dictGetAttr(kwargs, "resetTimeGrid", None)
+                self._resetFreq = dictGetAttr(kwargs, "timeObsFreq", None)
+                # Check exactly one of the above two attributes is not None:
+                assert bool(self._tResetGrid) ^ bool(
+                    self._resetFreq
+                ), "One and only one of resetGrid and resetFreq can be provided. Please check your inputs!"
+                if self._resetFreq:  # If reset time grid not specified
+                    self._tResetGrid = np.linspace(
+                        0,
+                        self.tau,
+                        num=self.tau * frequency_counts_dict[self._resetFreq.upper()],
+                    )[1:]
+                self._tGrid = np.concatenate((self._tGrid, self._tResetGrid))
+                self._tGrid = np.unique(np.sort(self._tGrid))
+                self._n = len(self._tGrid) - 1  # See Andersen page 45 for '-1'
+        if "BARRIER" in self.prod_type:
+            self.barrier = dictGetAttr(kwargs, "barrier", None)
+            self.flavor = dictGetAttr(kwargs, "flavor", None)
 
         func_dict = {
             "mu": "drift",
@@ -217,7 +219,7 @@ class Mesh:
             # Extra step if discrete resets in place:
             if self._hasResets:
                 if self._tGrid[i + 1] in self._tResetGrid:  # Improve this search
-                    V0[i + 1] = V0[i + 1] * self._resetMask
+                    V0[i + 1] = self._resetGrid(t_theta, V0[i + 1])
 
             # Write 2.18 as: T*V(t_i)=S
             T = np.eye(self._m) - self._theta * delta_t * A_mat
@@ -230,6 +232,24 @@ class Mesh:
             V0[i] = np.matmul(np.linalg.inv(T), S)
 
         return V0[0]
+
+    def _resetGrid(self, t_theta, onedGrid):
+        """Reset the grid values during backpropagation"""
+        if self.prod_type in ["AMERICAN VANILLA", "BERMUDAN VANILLA"]:
+            return np.maximum(
+                onedGrid, self._g(t_theta * np.ones(self._m), self._xGrid[1:-1])
+            )
+        elif self.prod_type == "EUROPEAN BARRIER":
+            if self.flavor == "UP-AND-OUT":
+                resetMask = 1.0 * (self._xGrid < self.barrier)
+            elif self.flavor == "DOWN-AND-OUT":
+                resetMask = 1.0 * (self._xGrid > self.barrier)
+            else:
+                raise Exception(
+                    "Unsupported option flavor! Note all knock-in options are calculated via in-out parity."
+                )
+            resetMask = resetMask[1:-1]
+            return onedGrid * resetMask
 
     def __call__(self, underlying):
         """Define function call method"""
@@ -247,19 +267,19 @@ class Mesh:
         return tGrid, xGrid
 
 
-class Mesh_discrete_resets(Mesh):
-    """This is the adjusted mesh class with spatial grid value resets at prescribed time
-    periods.
-    Applications of this mesh class includes:
-    1. Discrete barrier options where the barrier is observed at prescribed discrete time
-    stamps.
-    """
+# class Mesh_discrete_resets(Mesh):
+#     """This is the adjusted mesh class with spatial grid value resets at prescribed time
+#     periods.
+#     Applications of this mesh class includes:
+#     1. Discrete barrier options where the barrier is observed at prescribed discrete time
+#     stamps.
+#     """
 
-    def __init__(self):
-        super().__init__(tau, underlying, **kwargs)
-        # if self._equiGrid:
-        #     raise ValueError(
-        #         """In discrete barrier options, the barrier observation dates
-        #         should be included in the time grids, therefore equi-distance grid is
-        #         not recommended!"""
-        #     )
+#     def __init__(self):
+#         super().__init__(tau, underlying, **kwargs)
+#         # if self._equiGrid:
+#         #     raise ValueError(
+#         #         """In discrete barrier options, the barrier observation dates
+#         #         should be included in the time grids, therefore equi-distance grid is
+#         #         not recommended!"""
+#         #     )
