@@ -6,6 +6,7 @@ Date:       12/21/2020
 
 """
 
+import math
 import numpy as np
 import scipy.optimize
 import scipy.interpolate
@@ -55,6 +56,238 @@ class single_asset_vol_base(metaclass=ABCMeta):
             self.ir,
             self.dividend_yield,
         )
+
+
+class GBM_randomization(single_asset_vol_base):
+    """Pricing object for American option on GBM dynamics using Carr randomization"""
+
+    def __init__(
+        self,
+        isCall,
+        spot,
+        strike,
+        tau,
+        ir,
+        prod_type="AMERICAN VANILLA",
+        **kwargs,
+    ):
+        super().__init__(isCall, spot, strike, tau, ir, 0, prod_type, **kwargs)
+        self.vol = dictGetAttr(self.other_params, "vol", None)
+        self.richardson_order = dictGetAttr(self.other_params, "richardson_order", 5)
+
+    def price(self):
+        if self.isCall:
+            return BSOpt(
+                self.isCall,
+                self.x0,
+                self.strike,
+                self.vol,
+                self.tau,
+                self.ir,
+                self.dividend_yield,
+            )
+        else:
+            return carr_randomization(
+                False,
+                self.x0,
+                self.strike,
+                self.vol,
+                self.tau,
+                self.ir,
+                self.richardson_order,
+            )
+
+
+def carr_randomization(isCall, spot, strike, vol, tau, r, richardson_order):
+    """Implements the American put option pricing formula with Richardson extrapolation described in
+    'Randomization and the American Put', Carr, 1998"""
+    if isCall:
+        raise NotImplementedError(
+            "American call with dividends has yet to be implemented!"
+        )
+
+    # #The following code paragraph reproduces the put price at a particular order, w/o Richardson
+    # #It is for testing purpose only!
+    # order = richardson_order
+    # gamma = 0.5 - r / vol ** 2
+    # Delta = tau / order
+    # R = 1 / (1 + r * Delta)
+    # epsilon = math.sqrt(gamma ** 2 + 2 / (R * vol ** 2 * Delta))
+    # p = (epsilon - gamma) / (2 * epsilon)
+    # q = 1 - p
+    # p_hat = (epsilon - gamma + 1) / (2 * epsilon)
+    # q_hat = 1 - p_hat
+    # params = [R, r, Delta, p, q, p_hat, q_hat, gamma, epsilon]
+    # exercise_boundary = get_exercise_boundary(spot, strike, params, order)
+    # return PnS(spot, strike, params, exercise_boundary)
+
+    price_by_order = []
+    for order in range(1, richardson_order + 1):
+        gamma = 0.5 - r / vol ** 2
+        Delta = tau / order
+        R = 1 / (1 + r * Delta)
+        epsilon = math.sqrt(gamma ** 2 + 2 / (R * vol ** 2 * Delta))
+        p = (epsilon - gamma) / (2 * epsilon)
+        q = 1 - p
+        p_hat = (epsilon - gamma + 1) / (2 * epsilon)
+        q_hat = 1 - p_hat
+        params = [R, r, Delta, p, q, p_hat, q_hat, gamma, epsilon]
+        exercise_boundary = get_exercise_boundary(spot, strike, params, order)
+        price_by_order.append(PnS(spot, strike, params, exercise_boundary))
+    price_by_order = np.array(price_by_order)
+    return richardson_extrapolation(price_by_order, richardson_order)
+
+
+def get_exercise_boundary(spot, strike, params, n):
+    """Obtain the exercise boundaries for n-Poisson jumps via Eqn. (31)"""
+    R, r, Delta, p, q, p_hat, q_hat, gamma, epsilon = params
+    exercise_boundary = [strike]
+    for m in range(1, n + 1):
+        Sm = strike * (
+            p
+            * R
+            * strike
+            * r
+            * Delta
+            / (
+                c_1_m_K(strike, params, m)
+                - A_i_n_Sh(strike, strike, params, 1, m, 2, exercise_boundary)
+            )
+        ) ** (1 / (gamma + epsilon))
+        exercise_boundary.append(Sm)
+    return np.array(exercise_boundary)
+
+
+def c_1_m_K(strike, params, m):
+    """Eqn. (32) implementation"""
+    R, r, Delta, p, q, p_hat, q_hat, gamma, epsilon = params
+    return sum(
+        [
+            math.comb(m - 1 + l, m - 1)
+            * (strike * p_hat ** m * q_hat ** l - strike * R ** m * p ** m * q ** l)
+            for l in range(m)
+        ]
+    )
+
+
+def PnS(spot, strike, params, exercise_boundary):
+    """Return the American put price for n-period jump process, via Eqn. (26)"""
+    R, r, Delta, p, q, p_hat, q_hat, gamma, epsilon = params
+    index = exercise_boundary.size - np.searchsorted(
+        exercise_boundary[::-1], spot, side="left"
+    )
+    n = exercise_boundary.size - 1
+    if index == 0:
+        return p_0_n_S(spot, strike, params, n) + b_i_n_S(
+            spot, strike, params, 1, n, exercise_boundary
+        )
+    elif index == n + 2:
+        return strike - spot
+    else:
+        return (
+            v_i_n_S(spot, strike, R, index, n)
+            + b_i_n_S(spot, strike, params, index, n, exercise_boundary)
+            + A_i_n_Sh(spot, strike, params, index, n, 1, exercise_boundary)
+        )
+
+
+def A_i_n_Sh(spot, strike, params, i, n, h, exercise_boundary):
+    """Eqn. (30) implementation"""
+    R, r, Delta, p, q, p_hat, q_hat, gamma, epsilon = params
+    res = 0
+    for j in range(h, n - i + 2):
+        res_mid = 0
+        for k in range(j):
+            inner_sum = sum(
+                [
+                    math.comb(j - 1 + l, j - 1)
+                    * p ** j
+                    * q ** (k + l)
+                    * R ** j
+                    * strike
+                    * r
+                    * Delta
+                    for l in range(j - k)
+                ]
+            )
+            res_mid += (
+                (2 * epsilon * math.log(exercise_boundary[n - j + 1] / spot)) ** k
+                / math.factorial(k)
+                * inner_sum
+            )
+        res += (spot / exercise_boundary[n - j + 1]) ** (gamma + epsilon) * res_mid
+    return res
+
+
+def v_i_n_S(spot, strike, R, i, n):
+    """Implement the expression for v_i^n(S) (the un-numbered formula after Eqn. (28))"""
+    return strike * R ** (n - i + 1) - spot
+
+
+def p_0_n_S(spot, strike, params, n):
+    """Eqn. (27) implementation"""
+    R, r, Delta, p, q, p_hat, q_hat, gamma, epsilon = params
+    res = 0
+    for k in range(n):
+        inner_sum = sum(
+            [
+                math.comb(n - 1 + l, n - 1)
+                * (
+                    strike * R ** n * q ** n * p ** (l + k)
+                    - strike * q_hat ** n * p_hat ** (l + k)
+                )
+                for l in range(n - k)
+            ]
+        )
+        res += (
+            (2 * epsilon * math.log(spot / strike)) ** k / math.factorial(k) * inner_sum
+        )
+    return res * (spot / strike) ** (gamma - epsilon)
+
+
+def b_i_n_S(spot, strike, params, i, n, exercise_boundary):
+    """Eqn. (29) implementation"""
+    R, r, Delta, p, q, p_hat, q_hat, gamma, epsilon = params
+    res = 0
+    for j in range(1, n - i + 2):
+        res_mid = 0
+        for k in range(j):
+            inner_sum = sum(
+                [
+                    math.comb(j - 1 + l, j - 1)
+                    * q ** j
+                    * p ** (k + l)
+                    * R ** j
+                    * strike
+                    * r
+                    * Delta
+                    for l in range(j - k)
+                ]
+            )
+            res_mid += (
+                (2 * epsilon * math.log(spot / exercise_boundary[n - j + 1])) ** k
+                / math.factorial(k)
+                * inner_sum
+            )
+        res += (spot / exercise_boundary[n - j + 1]) ** (gamma - epsilon) * res_mid
+    return res
+
+
+def richardson_extrapolation(price_by_order, richardson_order):
+    """Implement Richardson extrapolation as in Eqn. (35) of the Carr Randomization paper"""
+    try:
+        assert len(price_by_order) == richardson_order
+    except AssertionError as e:
+        logger.error("The length of the prices should equal the richardson order!")
+    prices = [
+        richardson_summand(n, richardson_order, price_by_order[n - 1])
+        for n in range(1, richardson_order + 1)
+    ]
+    return sum(prices)
+
+
+def richardson_summand(n, N, P_Tn):
+    return (-1) ** (N - n) * n ** N / (math.factorial(n) * math.factorial(N - n)) * P_Tn
 
 
 class Bachlier_obj(single_asset_vol_base):

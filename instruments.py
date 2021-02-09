@@ -296,14 +296,23 @@ class american_vanilla_option(instrument_base):
             dividend_yield,
             Engine,
             engine_dict={
-                # "ANALYTICAL": ["GBM", "CEV", "DISPLACED GBM", "SABR"],
+                "ANALYTICAL": ["GBM"],
                 "PDE": ["GBM", "CEV"],
                 "MONTE CARLO": ["TBD"],
             },  # The suppported engines vary by each instrument.
             **kwargs,
         )
         # Obtaining underlying volatility object
-        if self.Engine[0] == "PDE":
+        if self.Engine[0] == "ANALYTICAL":
+            self._priceObj = Utils.vanilla_utils.GBM_randomization(
+                self.isCall,
+                self.x0,
+                self.strike,
+                self.tau,
+                ir=self.ir,
+                **self.other_params,
+            )
+        elif self.Engine[0] == "PDE":
             if self.Engine[1] == "GBM":
                 self._priceObj = LocalVol.lv.american_vanilla_localvol_GBM(
                     self.isCall,

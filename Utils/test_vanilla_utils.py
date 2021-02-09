@@ -5,7 +5,7 @@ Date:       12/21/2020
 """
 
 import unittest
-import Utils.other_utils
+import Utils.other_utils, Utils.vanilla_utils
 import numpy as np
 from scipy.stats import norm
 import logging
