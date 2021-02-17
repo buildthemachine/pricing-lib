@@ -6,6 +6,7 @@ Date:       12/21/2020
 
 import numpy as np
 import scipy
+import pickle
 import instruments
 import logging
 import unittest
@@ -994,7 +995,6 @@ class test_american_put_carr(unittest.TestCase):
         self.tau = 1
         self.underlying = 100
         self.strike = 100
-        self.theta = 0.5  # Theta controls explicit/implicit/Crank-Nicolson
         self.ir = 0.1
         self.dividend_yield = 0.0
         self.bsvol = 0.3
@@ -1017,10 +1017,54 @@ class test_american_put_carr(unittest.TestCase):
             np.fabs(self.american_opt_put_randomization.Price() - 8.3378) < self.eps
         )
         prices = {}
-        s_low, s_high = 50, 150
-        spots = np.linspace(s_low, s_high, 500)
+        s_low, s_high = 30, 200
+        spots = np.linspace(s_low, s_high, 1000)
+
+        # Plot call options:
         fig = plt.figure(figsize=(15, 10))
-        for order in range(1, 5):
+        for order in range(2, 5, 2):
+            prices[order] = []
+            for x0 in spots:
+                self.american_opt_call_randomization = (
+                    instruments.american_vanilla_option(
+                        isCall=True,
+                        strike=self.strike,
+                        underlying=x0,
+                        expiration=self.tau,
+                        ir=self.ir,
+                        dividend_yield=0.06,
+                        Engine=["ANALYTICAL", "GBM"],
+                        vol=self.bsvol,
+                        phi=5,
+                        richardson_order=order,
+                    )
+                )
+                prices[order].append(self.american_opt_call_randomization.Price())
+            plt.plot(spots, prices[order], label=f"order={order}")
+        euro_price = []
+        for x0 in spots:
+            # Analytical solution for Black-Scholes
+            self.bs_call = instruments.european_option(
+                isCall=True,
+                strike=self.strike,
+                underlying=x0,
+                expiration=self.tau,
+                ir=self.ir,
+                dividend_yield=0,
+                Engine=["analytical", "GBM"],
+                vol=self.bsvol,
+            )
+            euro_price.append(self.bs_call.Price())
+        plt.plot(spots, euro_price, label="European")
+        plt.plot(spots, np.maximum(spots - self.strike, 0), label="payoff")
+        plt.xlim((s_low, s_high))
+        plt.ylim((0, s_high - self.strike))
+        plt.legend(loc="upper left")
+        plt.show()
+
+        # Plot put options:
+        fig = plt.figure(figsize=(15, 10))
+        for order in range(2, 3, 2):
             prices[order] = []
             for x0 in spots:
                 self.american_opt_put_randomization = (
@@ -1030,9 +1074,10 @@ class test_american_put_carr(unittest.TestCase):
                         underlying=x0,
                         expiration=self.tau,
                         ir=self.ir,
-                        dividend_yield=0,
+                        dividend_yield=0.02,
                         Engine=["ANALYTICAL", "GBM"],
                         vol=self.bsvol,
+                        phi=6,
                         richardson_order=order,
                     )
                 )
@@ -1057,7 +1102,7 @@ class test_american_put_carr(unittest.TestCase):
         plt.xlim((s_low, s_high))
         plt.ylim((0, self.strike - s_low))
         plt.legend(loc="upper right")
-        # plt.show()
+        plt.show()
 
 
 class test_american_option(unittest.TestCase):
@@ -1182,250 +1227,250 @@ class test_american_option(unittest.TestCase):
 
 
 # The following test is quite time consuming therefore better to comment out
-class test_bermudan_option(unittest.TestCase):
-    def setUp(self):
-        logger.info("Setting up class instrument...")
-        self.tau = 10
-        self.underlying = np.linspace(50, 200, 100)
-        self.strike = 100
-        self.theta = 0.5  # Theta controls explicit/implicit/Crank-Nicolson
-        self.ir = 0.05
-        self.dividend_yield = 0.0
-        self.bsvol = 0.31
-        self.cev_p = 0.5
-        self.cev_lamda = 0.6
-        self.eps = 1e-2
+# class test_bermudan_option(unittest.TestCase):
+#     def setUp(self):
+#         logger.info("Setting up class instrument...")
+#         self.tau = 10
+#         self.underlying = np.linspace(50, 200, 100)
+#         self.strike = 100
+#         self.theta = 0.5  # Theta controls explicit/implicit/Crank-Nicolson
+#         self.ir = 0.05
+#         self.dividend_yield = 0.0
+#         self.bsvol = 0.31
+#         self.cev_p = 0.5
+#         self.cev_lamda = 0.6
+#         self.eps = 1e-2
 
-        self.bermudan_opt_put_annual_cev = instruments.bermudan_vanilla_option(
-            isCall=False,
-            strike=self.strike,
-            underlying=self.underlying,
-            expiration=self.tau,
-            ir=self.ir,
-            dividend_yield=self.dividend_yield,
-            Engine=["PDE", "CEV"],
-            lamda=self.cev_lamda,
-            p=self.cev_p,
-            interp="cubic spline",
-            timeObsFreq="annually",
-            M=300,  # spatial grids
-            N=300,  # time grids
-            Mhigh=self.strike * 10,
-            Mlow=0,
-        )
+#         self.bermudan_opt_put_annual_cev = instruments.bermudan_vanilla_option(
+#             isCall=False,
+#             strike=self.strike,
+#             underlying=self.underlying,
+#             expiration=self.tau,
+#             ir=self.ir,
+#             dividend_yield=self.dividend_yield,
+#             Engine=["PDE", "CEV"],
+#             lamda=self.cev_lamda,
+#             p=self.cev_p,
+#             interp="cubic spline",
+#             timeObsFreq="annually",
+#             M=300,  # spatial grids
+#             N=300,  # time grids
+#             Mhigh=self.strike * 10,
+#             Mlow=0,
+#         )
 
-        self.bermudan_opt_put_month_cev = instruments.bermudan_vanilla_option(
-            isCall=False,
-            strike=self.strike,
-            underlying=self.underlying,
-            expiration=self.tau,
-            ir=self.ir,
-            dividend_yield=self.dividend_yield,
-            Engine=["PDE", "CEV"],
-            lamda=self.cev_lamda,
-            p=self.cev_p,
-            interp="cubic spline",
-            timeObsFreq="monthly",
-            M=300,  # spatial grids
-            N=300,  # time grids
-            Mhigh=self.strike * 10,
-            Mlow=0,
-        )
+#         self.bermudan_opt_put_month_cev = instruments.bermudan_vanilla_option(
+#             isCall=False,
+#             strike=self.strike,
+#             underlying=self.underlying,
+#             expiration=self.tau,
+#             ir=self.ir,
+#             dividend_yield=self.dividend_yield,
+#             Engine=["PDE", "CEV"],
+#             lamda=self.cev_lamda,
+#             p=self.cev_p,
+#             interp="cubic spline",
+#             timeObsFreq="monthly",
+#             M=300,  # spatial grids
+#             N=300,  # time grids
+#             Mhigh=self.strike * 10,
+#             Mlow=0,
+#         )
 
-        self.bermudan_opt_put_week_cev = instruments.bermudan_vanilla_option(
-            isCall=False,
-            strike=self.strike,
-            underlying=self.underlying,
-            expiration=self.tau,
-            ir=self.ir,
-            dividend_yield=self.dividend_yield,
-            Engine=["PDE", "CEV"],
-            lamda=self.cev_lamda,
-            p=self.cev_p,
-            interp="cubic spline",
-            timeObsFreq="weekly",
-            M=300,  # spatial grids
-            N=300,  # time grids
-            Mhigh=self.strike * 10,
-            Mlow=0,
-        )
+#         self.bermudan_opt_put_week_cev = instruments.bermudan_vanilla_option(
+#             isCall=False,
+#             strike=self.strike,
+#             underlying=self.underlying,
+#             expiration=self.tau,
+#             ir=self.ir,
+#             dividend_yield=self.dividend_yield,
+#             Engine=["PDE", "CEV"],
+#             lamda=self.cev_lamda,
+#             p=self.cev_p,
+#             interp="cubic spline",
+#             timeObsFreq="weekly",
+#             M=300,  # spatial grids
+#             N=300,  # time grids
+#             Mhigh=self.strike * 10,
+#             Mlow=0,
+#         )
 
-        self.bermudan_opt_put_day_cev = instruments.bermudan_vanilla_option(
-            isCall=False,
-            strike=self.strike,
-            underlying=self.underlying,
-            expiration=self.tau,
-            ir=self.ir,
-            dividend_yield=self.dividend_yield,
-            Engine=["PDE", "CEV"],
-            lamda=self.cev_lamda,
-            p=self.cev_p,
-            interp="cubic spline",
-            timeObsFreq="daily",
-            M=300,  # spatial grids
-            N=300,  # time grids
-            Mhigh=self.strike * 10,
-            Mlow=0,
-        )
+#         self.bermudan_opt_put_day_cev = instruments.bermudan_vanilla_option(
+#             isCall=False,
+#             strike=self.strike,
+#             underlying=self.underlying,
+#             expiration=self.tau,
+#             ir=self.ir,
+#             dividend_yield=self.dividend_yield,
+#             Engine=["PDE", "CEV"],
+#             lamda=self.cev_lamda,
+#             p=self.cev_p,
+#             interp="cubic spline",
+#             timeObsFreq="daily",
+#             M=300,  # spatial grids
+#             N=300,  # time grids
+#             Mhigh=self.strike * 10,
+#             Mlow=0,
+#         )
 
-        self.american_opt_put_cev = instruments.american_vanilla_option(
-            isCall=False,
-            strike=self.strike,
-            underlying=self.underlying,
-            expiration=self.tau,
-            ir=self.ir,
-            dividend_yield=self.dividend_yield,
-            Engine=["PDE", "CEV"],
-            lamda=self.cev_lamda,
-            p=self.cev_p,
-            interp="cubic spline",
-            # timeObsFreq="monthly",
-            M=300,  # spatial grids
-            N=3000,  # time grids
-            Mhigh=self.strike * 10,
-            Mlow=0,
-        )
+#         self.american_opt_put_cev = instruments.american_vanilla_option(
+#             isCall=False,
+#             strike=self.strike,
+#             underlying=self.underlying,
+#             expiration=self.tau,
+#             ir=self.ir,
+#             dividend_yield=self.dividend_yield,
+#             Engine=["PDE", "CEV"],
+#             lamda=self.cev_lamda,
+#             p=self.cev_p,
+#             interp="cubic spline",
+#             # timeObsFreq="monthly",
+#             M=300,  # spatial grids
+#             N=3000,  # time grids
+#             Mhigh=self.strike * 10,
+#             Mlow=0,
+#         )
 
-        self.euro_opt_put_cev = instruments.european_option(
-            isCall=False,
-            strike=self.strike,
-            underlying=self.underlying,
-            expiration=self.tau,
-            Engine=["PDE", "CEV"],
-            lamda=self.cev_lamda,
-            p=self.cev_p,
-            ir=self.ir,
-            dividend_yield=self.dividend_yield,
-            interp="cubic spline",
-            M=300,  # spatial grids
-            N=300,  # time grids
-            Mhigh=self.strike * 10,
-            Mlow=0,
-        )
+#         self.euro_opt_put_cev = instruments.european_option(
+#             isCall=False,
+#             strike=self.strike,
+#             underlying=self.underlying,
+#             expiration=self.tau,
+#             Engine=["PDE", "CEV"],
+#             lamda=self.cev_lamda,
+#             p=self.cev_p,
+#             ir=self.ir,
+#             dividend_yield=self.dividend_yield,
+#             interp="cubic spline",
+#             M=300,  # spatial grids
+#             N=300,  # time grids
+#             Mhigh=self.strike * 10,
+#             Mlow=0,
+#         )
 
-        self.bermudan_opt_put_annual = instruments.bermudan_vanilla_option(
-            isCall=False,
-            strike=self.strike,
-            underlying=self.underlying,
-            expiration=self.tau,
-            ir=self.ir,
-            dividend_yield=self.dividend_yield,
-            Engine=["PDE", "GBM"],
-            vol=self.bsvol,
-            interp="cubic spline",
-            timeObsFreq="annually",
-            M=300,  # spatial grids
-            N=300,  # time grids
-            Mhigh=self.strike * 10,
-            Mlow=0,
-        )
+#         self.bermudan_opt_put_annual = instruments.bermudan_vanilla_option(
+#             isCall=False,
+#             strike=self.strike,
+#             underlying=self.underlying,
+#             expiration=self.tau,
+#             ir=self.ir,
+#             dividend_yield=self.dividend_yield,
+#             Engine=["PDE", "GBM"],
+#             vol=self.bsvol,
+#             interp="cubic spline",
+#             timeObsFreq="annually",
+#             M=300,  # spatial grids
+#             N=300,  # time grids
+#             Mhigh=self.strike * 10,
+#             Mlow=0,
+#         )
 
-        self.bermudan_opt_put_month = instruments.bermudan_vanilla_option(
-            isCall=False,
-            strike=self.strike,
-            underlying=self.underlying,
-            expiration=self.tau,
-            ir=self.ir,
-            dividend_yield=self.dividend_yield,
-            Engine=["PDE", "GBM"],
-            vol=self.bsvol,
-            interp="cubic spline",
-            timeObsFreq="monthly",
-            M=300,  # spatial grids
-            N=300,  # time grids
-            Mhigh=self.strike * 10,
-            Mlow=0,
-        )
+#         self.bermudan_opt_put_month = instruments.bermudan_vanilla_option(
+#             isCall=False,
+#             strike=self.strike,
+#             underlying=self.underlying,
+#             expiration=self.tau,
+#             ir=self.ir,
+#             dividend_yield=self.dividend_yield,
+#             Engine=["PDE", "GBM"],
+#             vol=self.bsvol,
+#             interp="cubic spline",
+#             timeObsFreq="monthly",
+#             M=300,  # spatial grids
+#             N=300,  # time grids
+#             Mhigh=self.strike * 10,
+#             Mlow=0,
+#         )
 
-        self.bermudan_opt_put_week = instruments.bermudan_vanilla_option(
-            isCall=False,
-            strike=self.strike,
-            underlying=self.underlying,
-            expiration=self.tau,
-            ir=self.ir,
-            dividend_yield=self.dividend_yield,
-            Engine=["PDE", "GBM"],
-            vol=self.bsvol,
-            interp="cubic spline",
-            timeObsFreq="weekly",
-            M=300,  # spatial grids
-            N=300,  # time grids
-            Mhigh=self.strike * 10,
-            Mlow=0,
-        )
+#         self.bermudan_opt_put_week = instruments.bermudan_vanilla_option(
+#             isCall=False,
+#             strike=self.strike,
+#             underlying=self.underlying,
+#             expiration=self.tau,
+#             ir=self.ir,
+#             dividend_yield=self.dividend_yield,
+#             Engine=["PDE", "GBM"],
+#             vol=self.bsvol,
+#             interp="cubic spline",
+#             timeObsFreq="weekly",
+#             M=300,  # spatial grids
+#             N=300,  # time grids
+#             Mhigh=self.strike * 10,
+#             Mlow=0,
+#         )
 
-        self.bermudan_opt_put_day = instruments.bermudan_vanilla_option(
-            isCall=False,
-            strike=self.strike,
-            underlying=self.underlying,
-            expiration=self.tau,
-            ir=self.ir,
-            dividend_yield=self.dividend_yield,
-            Engine=["PDE", "GBM"],
-            vol=self.bsvol,
-            interp="cubic spline",
-            timeObsFreq="daily",
-            M=300,  # spatial grids
-            N=300,  # time grids
-            Mhigh=self.strike * 10,
-            Mlow=0,
-        )
+#         self.bermudan_opt_put_day = instruments.bermudan_vanilla_option(
+#             isCall=False,
+#             strike=self.strike,
+#             underlying=self.underlying,
+#             expiration=self.tau,
+#             ir=self.ir,
+#             dividend_yield=self.dividend_yield,
+#             Engine=["PDE", "GBM"],
+#             vol=self.bsvol,
+#             interp="cubic spline",
+#             timeObsFreq="daily",
+#             M=300,  # spatial grids
+#             N=300,  # time grids
+#             Mhigh=self.strike * 10,
+#             Mlow=0,
+#         )
 
-        self.american_opt_put = instruments.american_vanilla_option(
-            isCall=False,
-            strike=self.strike,
-            underlying=self.underlying,
-            expiration=self.tau,
-            ir=self.ir,
-            dividend_yield=self.dividend_yield,
-            Engine=["PDE", "GBM"],
-            vol=self.bsvol,
-            interp="cubic spline",
-            # timeObsFreq="monthly",
-            M=300,  # spatial grids
-            N=3000,  # time grids
-            Mhigh=self.strike * 10,
-            Mlow=0,
-        )
+#         self.american_opt_put = instruments.american_vanilla_option(
+#             isCall=False,
+#             strike=self.strike,
+#             underlying=self.underlying,
+#             expiration=self.tau,
+#             ir=self.ir,
+#             dividend_yield=self.dividend_yield,
+#             Engine=["PDE", "GBM"],
+#             vol=self.bsvol,
+#             interp="cubic spline",
+#             # timeObsFreq="monthly",
+#             M=300,  # spatial grids
+#             N=3000,  # time grids
+#             Mhigh=self.strike * 10,
+#             Mlow=0,
+#         )
 
-        self.euro_opt_put = instruments.european_option(
-            isCall=False,
-            strike=self.strike,
-            underlying=self.underlying,
-            expiration=self.tau,
-            Engine=["PDE", "GBM"],
-            vol=self.bsvol,
-            ir=self.ir,
-            dividend_yield=self.dividend_yield,
-            interp="cubic spline",
-            M=300,  # spatial grids
-            N=300,  # time grids
-            Mhigh=self.strike * 10,
-            Mlow=0,
-        )
+#         self.euro_opt_put = instruments.european_option(
+#             isCall=False,
+#             strike=self.strike,
+#             underlying=self.underlying,
+#             expiration=self.tau,
+#             Engine=["PDE", "GBM"],
+#             vol=self.bsvol,
+#             ir=self.ir,
+#             dividend_yield=self.dividend_yield,
+#             interp="cubic spline",
+#             M=300,  # spatial grids
+#             N=300,  # time grids
+#             Mhigh=self.strike * 10,
+#             Mlow=0,
+#         )
 
-    def test_asymptotics(self):
-        annual_price = self.bermudan_opt_put_annual.Price()
-        month_price = self.bermudan_opt_put_month.Price()
-        week_price = self.bermudan_opt_put_week.Price()
-        day_price = self.bermudan_opt_put_day.Price()
+#     def test_asymptotics(self):
+#         annual_price = self.bermudan_opt_put_annual.Price()
+#         month_price = self.bermudan_opt_put_month.Price()
+#         week_price = self.bermudan_opt_put_week.Price()
+#         day_price = self.bermudan_opt_put_day.Price()
 
-        annual_price_cev = self.bermudan_opt_put_annual_cev.Price()
-        month_price_cev = self.bermudan_opt_put_month_cev.Price()
-        week_price_cev = self.bermudan_opt_put_week_cev.Price()
-        day_price_cev = self.bermudan_opt_put_day_cev.Price()
+#         annual_price_cev = self.bermudan_opt_put_annual_cev.Price()
+#         month_price_cev = self.bermudan_opt_put_month_cev.Price()
+#         week_price_cev = self.bermudan_opt_put_week_cev.Price()
+#         day_price_cev = self.bermudan_opt_put_day_cev.Price()
 
-        self.assertTrue(np.all(self.euro_opt_put.Price() < annual_price))
-        self.assertTrue(np.all(annual_price < month_price))
-        self.assertTrue(np.all(month_price < week_price))
-        self.assertTrue(np.all(week_price < day_price))
-        self.assertTrue(np.all(day_price < self.american_opt_put.Price()))
+#         self.assertTrue(np.all(self.euro_opt_put.Price() < annual_price))
+#         self.assertTrue(np.all(annual_price < month_price))
+#         self.assertTrue(np.all(month_price < week_price))
+#         self.assertTrue(np.all(week_price < day_price))
+#         self.assertTrue(np.all(day_price < self.american_opt_put.Price()))
 
-        self.assertTrue(np.all(self.euro_opt_put_cev.Price() < annual_price_cev))
-        self.assertTrue(np.all(annual_price_cev < month_price_cev))
-        self.assertTrue(np.all(month_price_cev < week_price_cev))
-        self.assertTrue(np.all(week_price_cev < day_price_cev))
-        self.assertTrue(np.all(day_price_cev < self.american_opt_put_cev.Price()))
+#         self.assertTrue(np.all(self.euro_opt_put_cev.Price() < annual_price_cev))
+#         self.assertTrue(np.all(annual_price_cev < month_price_cev))
+#         self.assertTrue(np.all(month_price_cev < week_price_cev))
+#         self.assertTrue(np.all(week_price_cev < day_price_cev))
+#         self.assertTrue(np.all(day_price_cev < self.american_opt_put_cev.Price()))
 
 
 if __name__ == "__main__":

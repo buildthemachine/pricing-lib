@@ -9,15 +9,17 @@ Contains pricing functionalities of financial derivatives. Several pricing engin
 - PDE method (backward induction)
 - Monte Carlo
 """
+
+import logging
 import numpy as np
 import scipy.optimize
 import scipy.interpolate
 import scipy.sparse
+from numba import njit
 from scipy.stats import norm, ncx2
 from Utils.other_utils import customFunc
 from Utils.other_utils import dictGetAttr, frequency_counts_dict
 from Utils.vanilla_utils import single_asset_vol_base
-import logging
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)

@@ -310,6 +310,7 @@ class american_vanilla_option(instrument_base):
                 self.strike,
                 self.tau,
                 ir=self.ir,
+                dividend_yield=self.dividend_yield,
                 **self.other_params,
             )
         elif self.Engine[0] == "PDE":
