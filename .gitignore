@@ -1,0 +1,6 @@
+/venv
+/.vscode
+*.pyc
+*.docx
+*.tmp
+*.pkl
