@@ -7,10 +7,12 @@ Date:       1/1/2021
 """
 
 import numpy as np
+import logging
+
+from numba import njit, double
 from scipy.stats import norm
 from Utils.other_utils import dictGetAttr, frequency_counts_dict
 from Utils.vanilla_utils import BSOpt, single_asset_vol_base
-import logging
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -151,16 +153,19 @@ class GBM_barrier_obj(single_asset_vol_base):
                 )
 
 
+@njit(double(double, double, double))
 def barrier_lamda(vol, r, q):
     return (r - q + vol ** 2 / 2) / (vol ** 2)
 
 
+@njit(double(double, double, double, double, double, double, double))
 def barrier_y(spot, strike, vol, tau, barrier, r, q):
     term1 = np.log(barrier ** 2 / spot / strike) / (vol * np.sqrt(tau))
     term2 = barrier_lamda(vol, r, q) * vol * np.sqrt(tau)
     return term1 + term2
 
 
+@njit(double(double, double, double, double, double, double))
 def barrier_x1(spot, vol, tau, barrier, r, q):
     term1 = np.log(spot / barrier) / (vol * np.sqrt(tau))
     term2 = barrier_lamda(vol, r, q) * vol * np.sqrt(tau)

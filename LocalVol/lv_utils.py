@@ -15,7 +15,6 @@ import numpy as np
 import scipy.optimize
 import scipy.interpolate
 import scipy.sparse
-from numba import njit
 from scipy.stats import norm, ncx2
 from Utils.other_utils import customFunc
 from Utils.other_utils import dictGetAttr, frequency_counts_dict
@@ -267,21 +266,3 @@ class Mesh:
         tGrid = np.linspace(0, self.tau, self._n + 1)
         xGrid = np.linspace(self._Mlow, self._Mhigh, self._m + 2)
         return tGrid, xGrid
-
-
-# class Mesh_discrete_resets(Mesh):
-#     """This is the adjusted mesh class with spatial grid value resets at prescribed time
-#     periods.
-#     Applications of this mesh class includes:
-#     1. Discrete barrier options where the barrier is observed at prescribed discrete time
-#     stamps.
-#     """
-
-#     def __init__(self):
-#         super().__init__(tau, underlying, **kwargs)
-#         # if self._equiGrid:
-#         #     raise ValueError(
-#         #         """In discrete barrier options, the barrier observation dates
-#         #         should be included in the time grids, therefore equi-distance grid is
-#         #         not recommended!"""
-#         #     )

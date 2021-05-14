@@ -12,8 +12,9 @@ import numpy as np
 import scipy.optimize
 
 from abc import ABCMeta, abstractmethod
+from numba import njit, double, bool_
 from scipy.stats import norm, ncx2
-from Utils.other_utils import dictGetAttr
+from Utils.other_utils import dictGetAttr, cnorma
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -97,6 +98,10 @@ def carr_randomization_dividend(
     """Implements the American put option pricing formula with Richardson extrapolation described in
     'Randomization and the American Put', Carr, 1998"""
     price_by_order = []
+
+    if tau > 500 and phi == 0:
+        if not isCall:
+            return perpetual_american_put(spot, strike, vol, r, deta)
 
     for order in range(1, richardson_order + 1):
         gamma = 0.5 - (r - deta) / vol ** 2
@@ -969,3 +974,18 @@ def CEVSpot(isCall, spot, strike, tau, lamda, p, r, q):
         )
 
     return Price
+
+
+@njit(double(double, double, double, double, double))
+def perpetual_american_put(spot, strike, vol, ir, dividend_yield):
+    """Pricing formula for perpetual American put option. Derivations see appendix of my notes"""
+    term_in_paren = ir - dividend_yield - 0.5 * vol ** 2
+    lambda_2 = (
+        -(term_in_paren + np.sqrt(term_in_paren ** 2 + 2 * vol ** 2 * ir)) / vol ** 2
+    )
+    return (
+        strike
+        / (1 - lambda_2)
+        * ((lambda_2 - 1) / lambda_2) ** lambda_2
+        * (spot / strike) ** lambda_2
+    )

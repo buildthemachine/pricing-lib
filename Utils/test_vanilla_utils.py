@@ -90,7 +90,27 @@ class Test_PriceEquivalence(unittest.TestCase):
     def setUp(self):
         self.eps = 1e-5
 
+    def test_perpetual_put(self):
+        """Test the perpetual American put option prices"""
+        spot, strike, vol, ir, q = 100, 100, 0.2, 0.05, 0
+        put_analytical = Utils.vanilla_utils.perpetual_american_put(
+            spot, strike, vol, ir, q
+        )
+        put_randomization = Utils.vanilla_utils.carr_randomization_dividend(
+            isCall=False,
+            spot=spot,
+            strike=strike,
+            vol=vol,
+            tau=400,
+            r=ir,
+            phi=0,
+            deta=0,
+            richardson_order=15,
+        )
+        self.assertTrue(np.fabs(put_analytical - put_randomization) < self.eps)
+
     def test_undiscCEVFwd(self):
+        """Test undiscounted CEV model prices"""
         fwd, strike, lamda, tau, p = 1, 1, 1, 1, 0.99
         cevPrice = Utils.vanilla_utils.undiscCEVFwd(True, fwd, strike, lamda, tau, p)
         blackVolCEV = Utils.vanilla_utils.BlackImpVol(

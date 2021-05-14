@@ -13,6 +13,7 @@ Contains pricing functionalities of financial derivatives. Several pricing engin
 import logging
 import numpy as np
 
+from numba import njit, double
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -25,6 +26,45 @@ frequency_counts_dict = {
     "QUARTERLY": 4,
     "ANNUALLY": 1,
 }
+
+
+@njit(double(double))
+def cnorma(x):
+    """A double precision algorithm for univariate cumulative normal.
+    Refer to 'Better approximations to cumulative normal functions' by Graeme West"""
+    XAbs = abs(x)
+    if XAbs > 37.0:
+        Cumnorm = 0
+    else:
+        Exponential = np.exp(-XAbs * XAbs / 2)
+        if XAbs < 7.07106781186547:
+            build = 3.52624965998911e-02 * XAbs + 0.700383064443688
+            build = build * XAbs + 6.37396220353165
+            build = build * XAbs + 33.912866078383
+            build = build * XAbs + 112.079291497871
+            build = build * XAbs + 221.213596169931
+            build = build * XAbs + 220.206867912376
+            Cumnorm = Exponential * build
+            build = 8.83883476483184e-02 * XAbs + 1.75566716318264
+            build = build * XAbs + 16.064177579207
+            build = build * XAbs + 86.7807322029461
+            build = build * XAbs + 296.564248779674
+            build = build * XAbs + 637.333633378831
+            build = build * XAbs + 793.826512519948
+            build = build * XAbs + 440.413735824752
+            Cumnorm = Cumnorm / build
+        else:
+            build = XAbs + 0.65
+            build = XAbs + 4 / build
+            build = XAbs + 3 / build
+            build = XAbs + 2 / build
+            build = XAbs + 1 / build
+            Cumnorm = Exponential / build / 2.506628274631
+
+    if x > 0:
+        Cumnorm = 1 - Cumnorm
+
+    return Cumnorm
 
 
 def dictGetAttr(dic, key, val):

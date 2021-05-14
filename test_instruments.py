@@ -1006,7 +1006,7 @@ class test_american_put_carr(unittest.TestCase):
             underlying=self.underlying,
             expiration=self.tau,
             ir=self.ir,
-            dividend_yield=0,
+            dividend_yield=0.0,
             Engine=["ANALYTICAL", "GBM"],
             vol=self.bsvol,
             richardson_order=5,
