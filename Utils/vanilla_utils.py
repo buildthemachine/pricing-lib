@@ -2,8 +2,9 @@
 This code implements the different utility functions of vanilla option pricing
 Author:     Yufei Shen
 Date:       12/21/2020
-# pricing-lib
 
+The pricing of American vanilla options are made possible by Carr randomization. In dear memory of Peter Carr, Mar 4th, 2022. 
+# pricing-lib
 """
 
 import logging
